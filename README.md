@@ -43,7 +43,12 @@ cp -R codebuddy-gpt-gemini-bridge ~/.codebuddy/skills/
 ```bash
 python3 <skill-dir>/scripts/bridge.py audit      # 先审计，不写配置
 python3 <skill-dir>/scripts/bridge.py bootstrap   # 预览本地桥接
-python3 <skill-dir>/scripts/bridge.py sync        # 把探测通过的模型同步进 models.json
+python3 <skill-dir>/scripts/bridge.py sync        # 把目录里存在的模型同步进 models.json
+
+# 配额/限流容错：模型只要出现在代理 /v1/models 目录里就注册，实时探测只用来细化能力；
+# 429/5xx/超时这类瞬时失败不会丢模型（回退到 provider 默认能力）。
+python3 <skill-dir>/scripts/bridge.py sync --skip-probes   # 完全跳过探测，直接按清单注册全部目录模型（配额耗尽时推荐）
+python3 <skill-dir>/scripts/bridge.py sync --strict        # 恢复原始严格行为：探测不过就跳过该模型
 python3 <skill-dir>/scripts/bridge.py repair      # 仅修复代理与 models.json 权限
 python3 <skill-dir>/scripts/bridge.py validate-provider -p providers/codex.json
 ```

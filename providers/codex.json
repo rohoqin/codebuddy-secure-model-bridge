@@ -13,9 +13,8 @@
   },
   "models": [
     {
-      "key": "gpt-sol-primary",
-      "candidates": ["gpt-5.6-sol", "gpt-5.6", "gpt-5.5"],
-      "patterns": ["^gpt-[0-9.]+-sol$"],
+      "key": "gpt-5.6-sol",
+      "candidates": ["gpt-5.6-sol"],
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
@@ -23,10 +22,53 @@
       }
     },
     {
-      "key": "gpt-sol-fast",
-      "candidates": ["gpt-5.6-sol-fast", "gpt-5.6-fast", "gpt-5.5-fast"],
-      "patterns": ["^gpt-[0-9.]+(?:-sol)?-fast$"],
-      "optional": true,
+      "key": "gpt-5.4",
+      "candidates": ["gpt-5.4"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gpt-5.4-mini",
+      "candidates": ["gpt-5.4-mini"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gpt-5.5",
+      "candidates": ["gpt-5.5"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gpt-5.6-terra",
+      "candidates": ["gpt-5.6-terra"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gpt-5.6-luna",
+      "candidates": ["gpt-5.6-luna"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "codex-auto-review",
+      "candidates": ["codex-auto-review"],
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
