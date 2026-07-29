@@ -1,0 +1,4 @@
+interface:
+  display_name: "CodeBuddy GPT & Gemini 接入"
+  short_description: "安全接入订阅版 GPT 与 Gemini，并保护内置模型"
+  default_prompt: "使用 $codebuddy-gpt-gemini-bridge，把我的 GPT 和 Gemini 订阅模型安全接入 CodeBuddy，并验证内置模型没有受到影响。"
