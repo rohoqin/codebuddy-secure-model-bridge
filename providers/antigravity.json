@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "antigravity",
-  "display_name": "Google Antigravity / Gemini",
+  "display_name": "Google Antigravity / Gemini / Claude",
   "cli": {
     "commands": ["antigravity", "agy"],
     "auth_hints": [".config/antigravity"]
@@ -13,26 +13,8 @@
   },
   "models": [
     {
-      "key": "gemini-primary",
-      "candidates": [
-        "gemini-3.6-flash-high",
-        "gemini-3.5-flash-low",
-        "gemini-3-flash",
-        "gemini-3.1-pro-low",
-        "gemini-3.1-flash-lite"
-      ],
-      "patterns": ["^gemini-[0-9.]+-flash(?:-(?:high|low|extra-low))?$"],
-      "codebuddy": {
-        "supportsToolCall": true,
-        "supportsImages": true,
-        "supportsReasoning": true
-      }
-    },
-    {
       "key": "gemini-3-flash",
       "candidates": ["gemini-3-flash"],
-      "patterns": ["^gemini-3-flash$"],
-      "optional": true,
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
@@ -42,8 +24,6 @@
     {
       "key": "gemini-3-flash-agent",
       "candidates": ["gemini-3-flash-agent"],
-      "patterns": ["^gemini-3-flash-agent$"],
-      "optional": true,
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
@@ -51,10 +31,8 @@
       }
     },
     {
-      "key": "gemini-3-1-flash-image",
+      "key": "gemini-3.1-flash-image",
       "candidates": ["gemini-3.1-flash-image"],
-      "patterns": ["^gemini-3\\.1-flash-image$"],
-      "optional": true,
       "codebuddy": {
         "supportsToolCall": false,
         "supportsImages": true,
@@ -62,10 +40,8 @@
       }
     },
     {
-      "key": "gemini-3-1-flash-lite",
+      "key": "gemini-3.1-flash-lite",
       "candidates": ["gemini-3.1-flash-lite"],
-      "patterns": ["^gemini-3\\.1-flash-lite$"],
-      "optional": true,
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
@@ -73,10 +49,8 @@
       }
     },
     {
-      "key": "gemini-3-1-pro-low",
+      "key": "gemini-3.1-pro-low",
       "candidates": ["gemini-3.1-pro-low"],
-      "patterns": ["^gemini-3\\.1-pro-low$"],
-      "optional": true,
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
@@ -84,10 +58,8 @@
       }
     },
     {
-      "key": "gemini-3-5-flash-extra-low",
+      "key": "gemini-3.5-flash-extra-low",
       "candidates": ["gemini-3.5-flash-extra-low"],
-      "patterns": ["^gemini-3\\.5-flash-extra-low$"],
-      "optional": true,
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
@@ -95,10 +67,8 @@
       }
     },
     {
-      "key": "gemini-3-5-flash-low",
+      "key": "gemini-3.5-flash-low",
       "candidates": ["gemini-3.5-flash-low"],
-      "patterns": ["^gemini-3\\.5-flash-low$"],
-      "optional": true,
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
@@ -106,10 +76,8 @@
       }
     },
     {
-      "key": "gemini-3-6-flash-high",
+      "key": "gemini-3.6-flash-high",
       "candidates": ["gemini-3.6-flash-high"],
-      "patterns": ["^gemini-3\\.6-flash-high$"],
-      "optional": true,
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
@@ -119,8 +87,33 @@
     {
       "key": "gemini-pro-agent",
       "candidates": ["gemini-pro-agent"],
-      "patterns": ["^gemini-pro-agent$"],
-      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "claude-sonnet-4-6",
+      "candidates": ["claude-sonnet-4-6"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "claude-opus-4-6-thinking",
+      "candidates": ["claude-opus-4-6-thinking"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gpt-oss-120b-medium",
+      "candidates": ["gpt-oss-120b-medium"],
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,

@@ -1314,26 +1314,33 @@ def cmd_sync(args: argparse.Namespace) -> int:
     incoming: list[tuple[str, dict[str, Any]]] = []
     probes: dict[str, Any] = {}
     skipped: list[dict[str, str]] = []
+    fallback_capabilities: list[dict[str, str]] = []
     for provider, recommendation, available_model in selected:
         model_id = available_model["id"]
         settings = dict(recommendation["codebuddy"])
         if not args.skip_probes:
             result = probe_model(endpoint, client_key, model_id, settings)
             probes[model_id] = result
-            if not result["text"]["ok"] or not result["stream"]["ok"]:
+            # A model that appears in the proxy's /v1/models catalog provably exists in the
+            # subscription, so a failed text/stream probe (rate-limit/quota 429, 5xx, timeout)
+            # is transient and must NOT block registration. We keep the model and fall back to
+            # the manifest-default capabilities instead. Capabilities are only downgraded when
+            # the probe actually succeeded and reported the capability as unsupported.
+            if result["text"]["ok"] or result["stream"]["ok"]:
+                if "tools" in result and not result["tools"]["ok"]:
+                    settings["supportsToolCall"] = False
+                if "images" in result and not result["images"]["ok"]:
+                    settings["supportsImages"] = False
+                if "reasoning" in result and not result["reasoning"]["ok"]:
+                    settings["supportsReasoning"] = False
+            elif args.strict:
                 skipped.append({"model": model_id, "reason": "text_or_stream_probe_failed"})
                 continue
-            if "tools" in result and not result["tools"]["ok"]:
-                settings["supportsToolCall"] = False
-            if "images" in result and not result["images"]["ok"]:
-                settings["supportsImages"] = False
-            if "reasoning" in result and not result["reasoning"]["ok"]:
-                settings["supportsReasoning"] = False
-                settings.pop("reasoning", None)
-                settings["onlyReasoning"] = False
+            else:
+                fallback_capabilities.append({"model": model_id, "error": result.get("error")})
         incoming.append((provider["id"], codebuddy_entry(model_id, endpoint, client_key, settings)))
     if not incoming:
-        raise BridgeError("all_probes_failed", "All recommended models failed required probes", details={"probes": probes})
+        raise BridgeError("no_models_selected", "No models were selected for sync", details={"selected": [m[2]["id"] for m in selected]})
     codebuddy_path = home_path(args.codebuddy, home)
     if not codebuddy_path.is_file():
         raise BridgeError("codebuddy_uninitialized", "Open CodeBuddy once before syncing models", details={"path": str(codebuddy_path)})
@@ -1395,6 +1402,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
             "changes": changes,
             "missing_recommendations": missing,
             "skipped": skipped,
+            "fallback_capabilities": fallback_capabilities,
             "probes": probes,
             "backup": str(backup) if backup else None,
             "managed_state_sources": state_sources,
@@ -1437,7 +1445,8 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--proxy-url", default=DEFAULT_PROXY_URL)
     sync.add_argument("--codebuddy", default=str(DEFAULT_CODEBUDDY_RELATIVE))
     sync.add_argument("--models-file", help="Offline /v1/models fixture for deterministic testing")
-    sync.add_argument("--skip-probes", action="store_true")
+    sync.add_argument("--skip-probes", action="store_true", help="Register all catalog models without live probing")
+    sync.add_argument("--strict", action="store_true", help="Drop models whose text/stream probe fails (original behaviour)")
     sync.add_argument("--apply", action="store_true")
     sync.set_defaults(func=cmd_sync)
 
