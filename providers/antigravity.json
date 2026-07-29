@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "id": "antigravity",
+  "display_name": "Google Antigravity / Gemini",
+  "cli": {
+    "commands": ["antigravity", "agy"],
+    "auth_hints": [".config/antigravity"]
+  },
+  "cliproxy": {
+    "provider": "antigravity",
+    "login_flag": "--antigravity-login",
+    "auth_file_prefixes": ["antigravity-"]
+  },
+  "models": [
+    {
+      "key": "gemini-primary",
+      "candidates": [
+        "gemini-3.6-flash-high",
+        "gemini-3.5-flash-low",
+        "gemini-3-flash",
+        "gemini-3.1-pro-low",
+        "gemini-3.1-flash-lite"
+      ],
+      "patterns": ["^gemini-[0-9.]+-flash(?:-(?:high|low|extra-low))?$"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gemini-3-flash",
+      "candidates": ["gemini-3-flash"],
+      "patterns": ["^gemini-3-flash$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gemini-3-flash-agent",
+      "candidates": ["gemini-3-flash-agent"],
+      "patterns": ["^gemini-3-flash-agent$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gemini-3-1-flash-image",
+      "candidates": ["gemini-3.1-flash-image"],
+      "patterns": ["^gemini-3\\.1-flash-image$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": false,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gemini-3-1-flash-lite",
+      "candidates": ["gemini-3.1-flash-lite"],
+      "patterns": ["^gemini-3\\.1-flash-lite$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gemini-3-1-pro-low",
+      "candidates": ["gemini-3.1-pro-low"],
+      "patterns": ["^gemini-3\\.1-pro-low$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gemini-3-5-flash-extra-low",
+      "candidates": ["gemini-3.5-flash-extra-low"],
+      "patterns": ["^gemini-3\\.5-flash-extra-low$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gemini-3-5-flash-low",
+      "candidates": ["gemini-3.5-flash-low"],
+      "patterns": ["^gemini-3\\.5-flash-low$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gemini-3-6-flash-high",
+      "candidates": ["gemini-3.6-flash-high"],
+      "patterns": ["^gemini-3\\.6-flash-high$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    },
+    {
+      "key": "gemini-pro-agent",
+      "candidates": ["gemini-pro-agent"],
+      "patterns": ["^gemini-pro-agent$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true
+      }
+    }
+  ]
+}
