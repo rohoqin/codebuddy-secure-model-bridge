@@ -649,6 +649,37 @@ class ProbeDowngradeTest(unittest.TestCase):
         self.assertFalse(entry["supportsReasoning"], "clean unsupported must downgrade")
 
 
+class FriendlyModelNameTest(unittest.TestCase):
+    def test_known_models(self):
+        cases = {
+            "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
+            "gemini-3-flash": "Gemini 3 Flash",
+            "gemini-3.6-flash-high": "Gemini 3.6 Flash High",
+            "gpt-5.6-sol": "GPT 5.6 Sol",
+            "gpt-5.4-mini": "GPT 5.4 Mini",
+            "gpt-oss-120b-medium": "GPT Oss 120b Medium",
+            "codex-auto-review": "Codex Auto Review",
+            "claude-sonnet-4-6": "Claude Sonnet 4 6",
+            "deepseek-v4-pro": "Deepseek v4 Pro",
+        }
+        for mid, expected in cases.items():
+            self.assertEqual(bridge.friendly_model_name(mid), expected, mid)
+
+    def test_empty_falls_back_to_id(self):
+        self.assertEqual(bridge.friendly_model_name(""), "")
+
+    def test_codebuddy_entry_uses_friendly_name(self):
+        entry = bridge.codebuddy_entry(
+            "gpt-5.6-sol",
+            "http://127.0.0.1:8317/v1/chat/completions",
+            "secret",
+            {"supportsToolCall": True, "supportsImages": True, "supportsReasoning": True},
+        )
+        self.assertEqual(entry["id"], "gpt-5.6-sol")
+        self.assertEqual(entry["name"], "GPT 5.6 Sol")
+        self.assertNotEqual(entry["id"], entry["name"], "name must differ from id to avoid duplicated display")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
