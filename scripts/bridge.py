@@ -603,6 +603,27 @@ def validate_provider(provider: Any, *, source: str = "provider") -> list[str]:
         prefixes = cliproxy.get("auth_file_prefixes", [])
         if not isinstance(prefixes, list) or any(not isinstance(prefix, str) or not prefix for prefix in prefixes):
             errors.append(f"{source}: cliproxy.auth_file_prefixes must be an array of strings")
+    catalogs = provider.get("model_catalogs")
+    if catalogs is not None:
+        if not isinstance(catalogs, list):
+            errors.append(f"{source}: model_catalogs must be an array")
+        else:
+            for idx, cat in enumerate(catalogs):
+                cprefix = f"{source}: model_catalogs[{idx}]"
+                if not isinstance(cat, dict):
+                    errors.append(f"{cprefix} must be an object")
+                    continue
+                if cat.get("format") != "json":
+                    errors.append(f"{cprefix}.format must be 'json'")
+                rel = cat.get("path")
+                if not isinstance(rel, str) or not rel:
+                    errors.append(f"{cprefix}.path is required")
+                elif Path(rel).is_absolute() or ".." in Path(rel).parts:
+                    errors.append(f"{cprefix}.path must be relative and free of '..'")
+                for field_name in ("id_fields", "input_fields", "output_fields"):
+                    vals = cat.get(field_name)
+                    if vals is not None and (not isinstance(vals, list) or any(not isinstance(v, str) for v in vals)):
+                        errors.append(f"{cprefix}.{field_name} must be an array of strings")
     models = provider.get("models")
     if not isinstance(models, list) or not models:
         errors.append(f"{source}: models must be a non-empty array")
@@ -668,6 +689,31 @@ def validate_provider(provider: Any, *, source: str = "provider") -> list[str]:
                         errors.append(f"{prefix}.codebuddy.{limit_key} must be a positive integer")
                 if "reasoning" in codebuddy and not isinstance(codebuddy["reasoning"], dict):
                     errors.append(f"{prefix}.codebuddy.reasoning must be an object")
+            optional = model.get("optional", False)
+            if not isinstance(optional, bool):
+                errors.append(f"{prefix}.optional must be boolean")
+            limits_by_model = model.get("limits_by_model")
+            if limits_by_model is not None:
+                if not isinstance(limits_by_model, dict):
+                    errors.append(f"{prefix}.limits_by_model must be an object")
+                else:
+                    for mid, lim in limits_by_model.items():
+                        lprefix = f"{prefix}.limits_by_model.{mid}"
+                        if not isinstance(lim, dict):
+                            errors.append(f"{lprefix} must be an object")
+                            continue
+                        for lk in ("maxInputTokens", "maxOutputTokens"):
+                            v = lim.get(lk)
+                            if v is not None and (not isinstance(v, int) or isinstance(v, bool) or v <= 0):
+                                errors.append(f"{lprefix}.{lk} must be a positive integer")
+                        sources = lim.get("sources")
+                        if sources is not None:
+                            if not isinstance(sources, dict):
+                                errors.append(f"{lprefix}.sources must be an object")
+                            else:
+                                for sval in sources.values():
+                                    if not isinstance(sval, str) or not (sval.startswith("http://") or sval.startswith("https://")):
+                                        errors.append(f"{lprefix}.sources values must be http(s) URLs")
     return errors
 
 
@@ -1032,11 +1078,96 @@ def select_recommended_models(
     return selected, missing
 
 
+def load_model_catalogs(home: Path, provider: dict[str, Any]) -> dict[str, dict[str, int]]:
+    # Adapted from the upstream workbuddy-cli-model-bridge `model_catalogs` contract.
+    # This CodeBuddy skill supports JSON catalogs only (no tomllib dependency on Python 3.10).
+    result: dict[str, dict[str, int]] = {}
+    catalogs = provider.get("model_catalogs") or []
+    if not isinstance(catalogs, list):
+        return result
+    for cat in catalogs:
+        if not isinstance(cat, dict) or cat.get("format") != "json":
+            continue
+        rel = cat.get("path")
+        if not isinstance(rel, str) or not rel or Path(rel).is_absolute() or ".." in Path(rel).parts:
+            continue
+        catalog_path = Path(home) / rel
+        if not catalog_path.is_file():
+            continue
+        try:
+            data = json.loads(catalog_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        id_fields = cat.get("id_fields") or ["id"]
+        input_fields = cat.get("input_fields") or []
+        output_fields = cat.get("output_fields") or []
+        rows = data if isinstance(data, list) else data.get("models") if isinstance(data, dict) else None
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            model_id = next((str(row.get(f)) for f in id_fields if row.get(f)), None)
+            if not model_id:
+                continue
+            limits: dict[str, int] = {}
+            for f in input_fields:
+                v = row.get(f)
+                if isinstance(v, int) and v > 0:
+                    limits["maxInputTokens"] = v
+            for f in output_fields:
+                v = row.get(f)
+                if isinstance(v, int) and v > 0:
+                    limits["maxOutputTokens"] = v
+            if limits:
+                result[model_id] = limits
+    return result
+
+
+def resolve_model_limits(
+    home: Path,
+    provider: dict[str, Any],
+    model_id: str,
+    recommendation: dict[str, Any],
+    catalog_cache: dict[str, dict[str, int]] | None = None,
+) -> dict[str, int]:
+    # Field-level merge in priority order:
+    #   limits_by_model[exact id] -> model_catalogs[exact id] -> codebuddy fallback
+    # Each source fills only the fields it actually declares, so a partial
+    # limits_by_model (e.g. only maxInputTokens) can be completed by the catalog.
+    out: dict[str, int] = {}
+    limits_by_model = recommendation.get("limits_by_model") or {}
+    if isinstance(limits_by_model, dict):
+        entry = limits_by_model.get(model_id)
+        if isinstance(entry, dict):
+            for k in ("maxInputTokens", "maxOutputTokens"):
+                v = entry.get(k)
+                if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+                    out[k] = v
+    if len(out) < 2:
+        catalogs = catalog_cache if catalog_cache is not None else load_model_catalogs(home, provider)
+        cat_limits = catalogs.get(model_id)
+        if isinstance(cat_limits, dict):
+            for k in ("maxInputTokens", "maxOutputTokens"):
+                if k not in out:
+                    v = cat_limits.get(k)
+                    if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+                        out[k] = v
+    if len(out) < 2:
+        codebuddy = recommendation.get("codebuddy") or {}
+        for k in ("maxInputTokens", "maxOutputTokens"):
+            if k not in out:
+                v = codebuddy.get(k)
+                if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+                    out[k] = v
+    return out
+
+
 def codebuddy_entry(model_id: str, endpoint: str, api_key: str, settings: dict[str, Any]) -> dict[str, Any]:
     # CodeBuddy reads custom models from ~/.codebuddy/models.json. The schema observed on
     # this machine uses vendor "user" plus the standard OpenAI-compatible fields below.
     # Extra/unknown keys are ignored by CodeBuddy, so we keep the entry minimal and safe.
-    return {
+    entry = {
         "id": model_id,
         "name": model_id,
         "vendor": "user",
@@ -1046,6 +1177,11 @@ def codebuddy_entry(model_id: str, endpoint: str, api_key: str, settings: dict[s
         "supportsImages": bool(settings.get("supportsImages", False)),
         "supportsReasoning": bool(settings.get("supportsReasoning", False)),
     }
+    if settings.get("maxInputTokens"):
+        entry["maxInputTokens"] = settings["maxInputTokens"]
+    if settings.get("maxOutputTokens"):
+        entry["maxOutputTokens"] = settings["maxOutputTokens"]
+    return entry
 
 
 def merge_codebuddy_models(
@@ -1406,9 +1542,20 @@ def cmd_sync(args: argparse.Namespace) -> int:
     probes: dict[str, Any] = {}
     skipped: list[dict[str, str]] = []
     fallback_capabilities: list[dict[str, str]] = []
+    # Preload each provider's catalog once to avoid re-reading the same files per model.
+    catalog_cache_by_provider: dict[int, dict[str, dict[str, int]]] = {
+        id(p): load_model_catalogs(home, p) for p in providers
+    }
     for provider, recommendation, available_model in selected:
         model_id = available_model["id"]
         settings = dict(recommendation["codebuddy"])
+        resolved_limits = resolve_model_limits(
+            home, provider, model_id, recommendation, catalog_cache_by_provider.get(id(provider))
+        )
+        # Exact-match limits (limits_by_model / catalog) must override any codebuddy fallback,
+        # so assign rather than setdefault (matches the documented resolution order).
+        for limit_key, limit_value in resolved_limits.items():
+            settings[limit_key] = limit_value
         if not args.skip_probes:
             result = probe_model(endpoint, client_key, model_id, settings)
             probes[model_id] = result

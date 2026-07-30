@@ -167,11 +167,23 @@ class ValidateProviderTest(unittest.TestCase):
         self.assertEqual(bridge.validate_provider(self._valid()), [])
 
     def test_bundled_providers_are_valid(self):
-        for name in ("codex.json", "antigravity.json"):
+        for name in ("codex.json", "antigravity.json", "xai-grok.json"):
             path = bridge.BUNDLED_PROVIDER_DIR / name
             with open(path, encoding="utf-8") as fh:
                 data = json.load(fh)
             self.assertEqual(bridge.validate_provider(data, source=name), [], name)
+
+    def test_capability_fields_live_inside_codebuddy(self):
+        # probe_model reads codebuddy.get("reasoning"); these fields must NOT be at model level.
+        for name in ("codex.json", "antigravity.json", "xai-grok.json"):
+            path = bridge.BUNDLED_PROVIDER_DIR / name
+            data = json.loads(path.read_text(encoding="utf-8"))
+            for model in data["models"]:
+                for field in ("reasoning", "useCustomProtocol", "onlyReasoning"):
+                    self.assertNotIn(field, model, f"{name}: {field} must be inside codebuddy, not model-level")
+        codex = json.loads((bridge.BUNDLED_PROVIDER_DIR / "codex.json").read_text(encoding="utf-8"))
+        sol = next(m for m in codex["models"] if m["key"] == "gpt-5.6-sol")
+        self.assertEqual(sol["codebuddy"]["reasoning"]["defaultEffort"], "high")
 
     def test_bad_schema_version(self):
         payload = self._valid()
@@ -256,6 +268,131 @@ class ValidateProviderTest(unittest.TestCase):
         payload = self._valid()
         payload["models"][0]["codebuddy"]["maxInputTokens"] = 0
         self.assertTrue(bridge.validate_provider(payload))
+
+    def test_model_catalogs_bad_format(self):
+        payload = self._valid()
+        payload["model_catalogs"] = [{"path": "cat.json", "format": "toml"}]
+        self.assertTrue(bridge.validate_provider(payload))
+
+    def test_model_catalogs_traversal(self):
+        payload = self._valid()
+        payload["model_catalogs"] = [{"path": "../cat.json", "format": "json"}]
+        self.assertTrue(bridge.validate_provider(payload))
+
+    def test_limits_by_model_bad_url(self):
+        payload = self._valid()
+        payload["models"][0]["limits_by_model"] = {
+            "example-1": {"maxInputTokens": 1000, "sources": {"x": "ftp://example.com"}}
+        }
+        self.assertTrue(bridge.validate_provider(payload))
+
+
+class ResolveLimitsTest(unittest.TestCase):
+    def _provider(self) -> dict:
+        return {
+            "id": "example",
+            "model_catalogs": [
+                {"path": "cat.json", "format": "json", "id_fields": ["id"],
+                 "input_fields": ["ctx"], "output_fields": ["out"]}
+            ],
+            "models": [
+                {
+                    "key": "example-1",
+                    "candidates": ["example-1"],
+                    "limits_by_model": {
+                        "example-1": {"maxInputTokens": 200000, "maxOutputTokens": 8000}
+                    },
+                    "codebuddy": {"supportsToolCall": True, "maxInputTokens": 1000},
+                }
+            ],
+        }
+
+    def test_limits_by_model_wins(self):
+        provider = self._provider()
+        recommendation = provider["models"][0]
+        resolved = bridge.resolve_model_limits(Path("/nonexistent"), provider, "example-1", recommendation)
+        self.assertEqual(resolved["maxInputTokens"], 200000)
+        self.assertEqual(resolved["maxOutputTokens"], 8000)
+
+    def test_catalog_resolution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "cat.json").write_text(
+                json.dumps([{"id": "cat-1", "ctx": 500000, "out": 16000}]), encoding="utf-8"
+            )
+            provider = {"id": "p", "model_catalogs": [
+                {"path": "cat.json", "format": "json", "id_fields": ["id"],
+                 "input_fields": ["ctx"], "output_fields": ["out"]}
+            ], "models": [{"key": "k", "candidates": ["cat-1"], "codebuddy": {}}]}
+            resolved = bridge.resolve_model_limits(home, provider, "cat-1", provider["models"][0])
+            self.assertEqual(resolved["maxInputTokens"], 500000)
+            self.assertEqual(resolved["maxOutputTokens"], 16000)
+
+    def test_fallback_to_codebuddy(self):
+        provider = {"id": "p", "models": [
+            {"key": "k", "candidates": ["m1"], "codebuddy": {"maxInputTokens": 1000, "maxOutputTokens": 500}}
+        ]}
+        resolved = bridge.resolve_model_limits(Path("/nonexistent"), provider, "m1", provider["models"][0])
+        self.assertEqual(resolved["maxInputTokens"], 1000)
+        self.assertEqual(resolved["maxOutputTokens"], 500)
+
+    def test_partial_limits_by_model_completed_by_catalog(self):
+        # limits_by_model only declares maxInputTokens; catalog should fill maxOutputTokens.
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "cat.json").write_text(
+                json.dumps([{"id": "m1", "ctx": 100000, "out": 9000}]), encoding="utf-8"
+            )
+            provider = {
+                "id": "p",
+                "model_catalogs": [
+                    {"path": "cat.json", "format": "json", "id_fields": ["id"],
+                     "input_fields": ["ctx"], "output_fields": ["out"]}
+                ],
+                "models": [{
+                    "key": "k",
+                    "candidates": ["m1"],
+                    "limits_by_model": {"m1": {"maxInputTokens": 200000}},
+                    "codebuddy": {},
+                }],
+            }
+            resolved = bridge.resolve_model_limits(home, provider, "m1", provider["models"][0])
+            self.assertEqual(resolved["maxInputTokens"], 200000)
+            self.assertEqual(resolved["maxOutputTokens"], 9000)
+
+    def test_partial_catalog_completed_by_codebuddy(self):
+        # catalog only declares maxInputTokens; codebuddy fallback fills maxOutputTokens.
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / "cat.json").write_text(
+                json.dumps([{"id": "m1", "ctx": 300000}]), encoding="utf-8"
+            )
+            provider = {
+                "id": "p",
+                "model_catalogs": [
+                    {"path": "cat.json", "format": "json", "id_fields": ["id"],
+                     "input_fields": ["ctx"], "output_fields": ["out"]}
+                ],
+                "models": [{
+                    "key": "k",
+                    "candidates": ["m1"],
+                    "codebuddy": {"maxOutputTokens": 4000},
+                }],
+            }
+            resolved = bridge.resolve_model_limits(home, provider, "m1", provider["models"][0])
+            self.assertEqual(resolved["maxInputTokens"], 300000)
+            self.assertEqual(resolved["maxOutputTokens"], 4000)
+
+    def test_catalog_cache_is_used_when_supplied(self):
+        # When a catalog_cache is passed, load_model_catalogs must not be called.
+        provider = {"id": "p", "models": [
+            {"key": "k", "candidates": ["m1"], "codebuddy": {}}
+        ]}
+        cache = {"m1": {"maxInputTokens": 770000, "maxOutputTokens": 32000}}
+        resolved = bridge.resolve_model_limits(
+            Path("/nonexistent"), provider, "m1", provider["models"][0], catalog_cache=cache
+        )
+        self.assertEqual(resolved, cache["m1"])
 
 
 class ChecksumTest(unittest.TestCase):
@@ -363,6 +500,63 @@ class SyncOfflineE2ETest(unittest.TestCase):
             ids = {model["id"] for model in written}
             self.assertIn("fixture-model", ids)
             self.assertTrue(list(codebuddy_file.parent.glob("codebuddy_models.json.backup-*")))
+
+    def test_limits_by_model_overrides_codebuddy_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home = tmp_path / "home"
+            home.mkdir()
+            providers_dir = bridge.state_paths(home)["providers"]
+            providers_dir.mkdir(parents=True, exist_ok=True)
+            provider = {
+                "schema_version": bridge.SCHEMA_VERSION,
+                "id": "fixture",
+                "display_name": "Fixture Provider",
+                "cli": {"commands": ["fixture"], "auth_hints": []},
+                "cliproxy": {"provider": "fixture", "auth_file_prefixes": ["fixture"]},
+                "models": [
+                    {
+                        "key": "fixture-model",
+                        "candidates": ["fixture-model"],
+                        "codebuddy": {"supportsToolCall": True, "maxInputTokens": 1000},
+                        "limits_by_model": {
+                            "fixture-model": {"maxInputTokens": 200000, "maxOutputTokens": 8000}
+                        },
+                    }
+                ],
+            }
+            (providers_dir / "fixture.json").write_text(json.dumps(provider), encoding="utf-8")
+            models_file = tmp_path / "models.json"
+            models_file.write_text(json.dumps([{"id": "fixture-model", "owned_by": "fixture"}]), encoding="utf-8")
+            codebuddy_file = tmp_path / "codebuddy_models.json"
+            codebuddy_file.write_text("[]", encoding="utf-8")
+
+            args = argparse.Namespace(
+                home=str(home),
+                codebuddy=str(codebuddy_file),
+                models_file=str(models_file),
+                apply=True,
+                skip_probes=True,
+                strict=False,
+                force=False,
+                providers="fixture",
+                proxy_url="http://127.0.0.1:8317",
+            )
+            old_key = os.environ.get("CODEBUDDY_BRIDGE_API_KEY")
+            os.environ["CODEBUDDY_BRIDGE_API_KEY"] = "test-key-" + "x" * 30
+            try:
+                rc = bridge.cmd_sync(args)
+            finally:
+                if old_key is None:
+                    os.environ.pop("CODEBUDDY_BRIDGE_API_KEY", None)
+                else:
+                    os.environ["CODEBUDDY_BRIDGE_API_KEY"] = old_key
+            self.assertEqual(rc, 0)
+            written = json.loads(codebuddy_file.read_text(encoding="utf-8"))
+            entry = next(m for m in written if m["id"] == "fixture-model")
+            # limits_by_model must win over the codebuddy maxInputTokens fallback.
+            self.assertEqual(entry["maxInputTokens"], 200000)
+            self.assertEqual(entry["maxOutputTokens"], 8000)
 
 
 if __name__ == "__main__":

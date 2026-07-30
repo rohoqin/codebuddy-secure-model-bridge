@@ -11,6 +11,15 @@
     "login_flag": "--antigravity-login",
     "auth_file_prefixes": ["antigravity-"]
   },
+  "model_catalogs": [
+    {
+      "path": ".config/antigravity/cliproxyapi-catalog.json",
+      "format": "json",
+      "id_fields": ["id"],
+      "input_fields": ["context_window"],
+      "output_fields": ["max_output_tokens"]
+    }
+  ],
   "models": [
     {
       "key": "gemini-3-flash",
@@ -78,6 +87,31 @@
     {
       "key": "gemini-3.6-flash-high",
       "candidates": ["gemini-3.6-flash-high"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true,
+        "useCustomProtocol": true,
+        "reasoning": {
+          "defaultEffort": "high",
+          "supportedEfforts": ["low", "medium", "high"],
+          "canDisableThinking": true
+        }
+      },
+      "limits_by_model": {
+        "gemini-3.6-flash-high": {
+          "maxInputTokens": 1048576,
+          "maxOutputTokens": 65536,
+          "sources": {
+            "context_window": "https://ai.google.dev/gemini-api/docs/limits"
+          }
+        }
+      }
+    },
+    {
+      "key": "gemini-3.6-flash-high-fast",
+      "candidates": ["gemini-3.6-flash-high-fast"],
+      "optional": true,
       "codebuddy": {
         "supportsToolCall": true,
         "supportsImages": true,
