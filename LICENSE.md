@@ -1,7 +1,6 @@
-# MIT License
+MIT License
 
-Copyright (c) 2026 Zhijian AI
-Copyright (c) 2026 Nick (CodeBuddy CN adaptation)
+Copyright (c) 2026 Roho Qin
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
