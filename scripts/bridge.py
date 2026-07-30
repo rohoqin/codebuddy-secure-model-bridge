@@ -1163,13 +1163,34 @@ def resolve_model_limits(
     return out
 
 
+_FRIENDLY_BRAND_OVERRIDES = {"gpt": "GPT"}
+
+
+def friendly_model_name(model_id: str) -> str:
+    """Derive a human-readable display name from a technical model id so CodeBuddy's
+    picker doesn't show duplicated `name:id` text. Pure-alpha tokens are Title Cased,
+    known brand tokens use a fixed casing (e.g. `gpt` -> `GPT`), and tokens that
+    already contain digits/dots (e.g. `3.1`, `5.6`, `120b`) are preserved verbatim."""
+    parts = model_id.split("-")
+    rendered: list[str] = []
+    for token in parts:
+        lower = token.lower()
+        if lower in _FRIENDLY_BRAND_OVERRIDES:
+            rendered.append(_FRIENDLY_BRAND_OVERRIDES[lower])
+        elif token.isalpha():
+            rendered.append(token.capitalize())
+        else:
+            rendered.append(token)
+    return " ".join(rendered) if rendered else model_id
+
+
 def codebuddy_entry(model_id: str, endpoint: str, api_key: str, settings: dict[str, Any]) -> dict[str, Any]:
     # CodeBuddy reads custom models from ~/.codebuddy/models.json. The schema observed on
     # this machine uses vendor "user" plus the standard OpenAI-compatible fields below.
     # Extra/unknown keys are ignored by CodeBuddy, so we keep the entry minimal and safe.
     entry = {
         "id": model_id,
-        "name": model_id,
+        "name": friendly_model_name(model_id),
         "vendor": "user",
         "url": endpoint,
         "apiKey": api_key,
