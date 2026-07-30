@@ -258,6 +258,12 @@ def active_codebuddy_proxy() -> dict[str, Any]:
     port (8080/8081). Our own bridge only ever binds 127.0.0.1:8317. Only listeners whose
     process name matches common proxy tooling are reported, so unrelated local services on
     those ports are no longer mistaken for a stale proxy.
+
+    .. note::
+        Only macOS is supported. On Windows and other platforms this returns an empty
+        result because ``lsof`` is not reliably available and the proxy‑detection
+        heuristics are platform‑specific. Callers treat ``{}`` as "no stale proxy
+        detected", which is the conservative safe default.
     """
     if platform.system() != "Darwin":
         return {}
@@ -853,8 +859,18 @@ def probe_stream(endpoint: str, api_key: str, model: str) -> tuple[bool, str | N
     )
     try:
         with urllib.request.urlopen(request, timeout=45) as response:
-            chunk = response.read(8192)
-        return (b"data:" in chunk or b"choices" in chunk), None
+            # SSE streams may deliver events in small frames.  Read line‑by‑line to
+            # avoid blocking on a full 8 KiB chunk that never arrives before timeout.
+            accumulated = b""
+            deadline = time.monotonic() + 15  # extra budget for the first data event
+            while time.monotonic() < deadline:
+                line = response.readline()
+                if not line:
+                    break
+                accumulated += line
+                if b"data:" in line or b"choices" in accumulated:
+                    return True, None
+            return (b"data:" in accumulated or b"choices" in accumulated), None
     except urllib.error.HTTPError as exc:
         try:
             message = f"HTTP {exc.code} from local proxy"
@@ -1403,7 +1419,11 @@ def cmd_sync(args: argparse.Namespace) -> int:
                 skipped.append({"model": model_id, "reason": "text_or_stream_probe_failed"})
                 continue
             else:
-                fallback_capabilities.append({"model": model_id, "error": result.get("error")})
+                # result is a dict of sub‑probes, each with its own "error" key.
+                text_error = result.get("text", {}).get("error")
+                stream_error = result.get("stream", {}).get("error")
+                merged_error = "; ".join(e for e in (text_error, stream_error) if e) or None
+                fallback_capabilities.append({"model": model_id, "error": merged_error})
         incoming.append((provider["id"], codebuddy_entry(model_id, endpoint, client_key, settings)))
     if not incoming:
         raise BridgeError("no_models_selected", "No models were selected for sync", details={"selected": [m[2]["id"] for m in selected]})
