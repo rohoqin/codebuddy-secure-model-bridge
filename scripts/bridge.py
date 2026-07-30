@@ -44,6 +44,16 @@ LEGACY_STATE_RELATIVE = Path(".config/codebuddy-cli-model-bridge")
 PORTABLE_ROOT_RELATIVE = Path(".local/share/codebuddy-gpt-gemini-bridge")
 CLIPROXY_RELEASE_API = "https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest"
 
+# Only these hosts are considered explicitly loopback-only. Any other value
+# (including concrete LAN/public addresses) must be rebound with confirmation.
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+# Hosts that explicitly mean "all interfaces" or "unset"; safe to rewrite to loopback.
+UNSPEC_HOSTS = ("", "0.0.0.0", "::", "[::]")
+
+
+def host_is_loopback(host: str | None) -> bool:
+    return host in LOOPBACK_HOSTS
+
 
 def png_chunk(chunk_type: bytes, data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", zlib.crc32(chunk_type + data))
@@ -193,22 +203,72 @@ def loopback_port_open(host: str, port: int, *, timeout: float = 0.5) -> bool:
         return False
 
 
+PROXY_PROCESS_SIGNATURES = (
+    "proxy",
+    "charles",
+    "clash",
+    "v2ray",
+    "xray",
+    "shadow",
+    "surge",
+    "fiddler",
+    "mitmproxy",
+    "whistle",
+    "trojan",
+    "sing-box",
+    "brook",
+    "hysteria",
+    "ss-local",
+    "privoxy",
+    "squid",
+)
+
+
+def listening_proxy_name(port: int) -> str | None:
+    """Return the lowercased command name of the process listening on a loopback port."""
+    if platform.system() != "Darwin":
+        return None
+    if not shutil.which("lsof"):
+        return None
+    try:
+        completed = run_command(
+            ["lsof", "-iTCP:%d" % port, "-sTCP:LISTEN", "-n", "-P", "-F", "pc"],
+            timeout=10,
+        )
+    except BridgeError:
+        return None
+    for line in completed.stdout.splitlines():
+        if line.startswith("c"):
+            return line[1:].lower()
+    return None
+
+
+def looks_like_proxy_process(name: str | None) -> bool:
+    if not name:
+        return False
+    return any(signature in name for signature in PROXY_PROCESS_SIGNATURES)
+
+
 def active_codebuddy_proxy() -> dict[str, Any]:
     """Detect stale system proxies that would conflict with CodeBuddy's model calls.
 
     CodeBuddy CN runs as an Electron app and does not expose an ``HTTP(S)_PROXY`` in its
     process arguments, so scanning ``ps`` for a proxy env var (the WorkBuddy heuristic)
-    never matches. Instead we look for another process already binding a loopback proxy
-    port (8080/8081). Our own bridge only ever binds 127.0.0.1:8317, so any listener on
-    8080/8081 is a stale proxy the user must clear before syncing models.
+    never matches. Instead we look for a *proxy-like* process already binding a loopback
+    port (8080/8081). Our own bridge only ever binds 127.0.0.1:8317. Only listeners whose
+    process name matches common proxy tooling are reported, so unrelated local services on
+    those ports are no longer mistaken for a stale proxy.
     """
     if platform.system() != "Darwin":
         return {}
     if not shutil.which("lsof"):
         return {}
     for port in (8080, 8081):
-        if loopback_port_open("127.0.0.1", port):
-            return {"stale": True, "listening_port": port}
+        if not loopback_port_open("127.0.0.1", port):
+            continue
+        name = listening_proxy_name(port)
+        if looks_like_proxy_process(name):
+            return {"stale": True, "listening_port": port, "process": name}
     return {}
 
 
@@ -705,13 +765,12 @@ def config_facts(path: Path | None, home: Path) -> dict[str, Any]:
         port = int(port_raw)
     except ValueError:
         port = 8317
-    unsafe = host in {None, "", "0.0.0.0", "::", "[::]"}
     return {
         "path": str(path),
         "exists": True,
         "host": host,
         "port": port,
-        "loopback_only": not unsafe and host in {"127.0.0.1", "localhost", "::1"},
+        "loopback_only": host_is_loopback(host),
         "auth_dir": str(home_path(auth_dir_raw, home)),
         "api_key_count": len(yaml_list_values(text, "api-keys")),
         "mode": reported_mode(path),
@@ -1128,13 +1187,20 @@ def bootstrap_config_preflight(config: Path | None, *, allow_rebind_local: bool)
         return None
     text = config.read_text(encoding="utf-8")
     host = top_level_scalar(text, "host")
-    if host in {None, "", "0.0.0.0", "::", "[::]"} and not allow_rebind_local:
-        raise BridgeError(
-            "public_bind_requires_approval",
-            "Existing CLIProxyAPI config is not explicitly loopback-only; rerun with --allow-rebind-local after confirming remote clients are not required",
-            details={"config": str(config)},
-        )
-    return text
+    if host_is_loopback(host):
+        return text
+    # Unspecified (None / 0.0.0.0 / ::) or a concrete non-loopback address: both must be
+    # rebound to loopback before the proxy is considered safe. Unspecified hosts are
+    # rewritten automatically; concrete non-loopback addresses require explicit confirmation.
+    if host is None or host in UNSPEC_HOSTS:
+        return text
+    if allow_rebind_local:
+        return text
+    raise BridgeError(
+        "public_bind_requires_approval",
+        "Existing CLIProxyAPI config is not explicitly loopback-only; rerun with --allow-rebind-local after confirming remote clients are not required",
+        details={"config": str(config), "host": host},
+    )
 
 
 def cmd_bootstrap(args: argparse.Namespace) -> int:
@@ -1142,12 +1208,12 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     system = platform.system()
     if system not in {"Darwin", "Windows"}:
         raise BridgeError("unsupported_os", "This Skill supports macOS and Windows")
-    brew = shutil.which("brew") if system == "Darwin" else None
-    if system == "Darwin" and not brew:
-        raise BridgeError("homebrew_missing", "Install Homebrew interactively from brew.sh, then rerun bootstrap")
     config = detect_config(home, args.config)
     existing_text = bootstrap_config_preflight(config, allow_rebind_local=args.allow_rebind_local)
     binary = detect_proxy_binary(home)
+    brew = shutil.which("brew") if system == "Darwin" else None
+    if not binary and system == "Darwin" and not brew:
+        raise BridgeError("homebrew_missing", "Install Homebrew interactively from brew.sh, then rerun bootstrap")
     formula_installed = bool(brew and brew_formula_installed(brew))
     install_planned = not binary
     actions: list[str] = []
@@ -1182,7 +1248,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
         text = existing_text
         text_changed = False
         host = top_level_scalar(text, "host")
-        if host in {None, "", "0.0.0.0", "::", "[::]"}:
+        if not host_is_loopback(host):
             actions.append("bind CLIProxyAPI to 127.0.0.1")
             if args.apply:
                 backup = backup_file(config)
