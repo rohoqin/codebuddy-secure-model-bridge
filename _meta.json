@@ -1,6 +1,6 @@
 {
-  "slug": "codebuddy-gpt-gemini-bridge",
-  "name": "CodeBuddy GPT & Gemini 安全接入",
+  "slug": "codebuddy-secure-model-bridge",
+  "name": "CodeBuddy 多模型安全接入",
   "version": "1.0.0",
   "ownerId": "REPLACE_WITH_YOUR_SKILLHUB_OWNER_ID"
 }
