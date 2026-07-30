@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "xai-grok",
+  "display_name": "xAI Grok",
+  "cli": {
+    "commands": ["grok"],
+    "auth_hints": [".grok"]
+  },
+  "cliproxy": {
+    "provider": "xai",
+    "login_flag": "--xai-login",
+    "auth_file_prefixes": ["xai-"]
+  },
+  "models": [
+    {
+      "key": "grok-primary",
+      "candidates": ["grok-4.5", "grok-4.5-build", "grok-4.5-build-local", "grok-4.3"],
+      "patterns": ["^grok-[0-9.]+$"],
+      "limits_by_model": {
+        "grok-4.5": {
+          "maxInputTokens": 500000,
+          "maxOutputTokens": 8192,
+          "sources": {
+            "context_window": "https://docs.x.ai/developers/models/grok-4.5",
+            "max_output_tokens": "https://docs.x.ai/build/settings"
+          }
+        },
+        "grok-4.5-build": {
+          "maxInputTokens": 500000,
+          "maxOutputTokens": 8192,
+          "sources": {
+            "context_window": "https://docs.x.ai/developers/models/grok-4.5",
+            "max_output_tokens": "https://docs.x.ai/build/settings"
+          }
+        },
+        "grok-4.5-build-local": {
+          "maxInputTokens": 500000,
+          "maxOutputTokens": 8192,
+          "sources": {
+            "context_window": "https://docs.x.ai/developers/models/grok-4.5",
+            "max_output_tokens": "https://docs.x.ai/build/settings"
+          }
+        }
+      },
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true,
+        "useCustomProtocol": true,
+        "onlyReasoning": true,
+        "reasoning": {
+          "defaultEffort": "low",
+          "supportedEfforts": ["low", "medium", "high"],
+          "canDisableThinking": false
+        }
+      }
+    },
+    {
+      "key": "grok-fast",
+      "candidates": ["grok-composer-2.5-fast", "grok-3-mini-fast"],
+      "patterns": ["^grok-.*-fast$"],
+      "optional": true,
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": false,
+        "useCustomProtocol": true,
+        "onlyReasoning": false
+      }
+    }
+  ]
+}
