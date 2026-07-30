@@ -559,6 +559,96 @@ class SyncOfflineE2ETest(unittest.TestCase):
             self.assertEqual(entry["maxOutputTokens"], 8000)
 
 
+class ProbeDowngradeTest(unittest.TestCase):
+    """Capabilities must only be downgraded on a clean-success-unsupported probe
+    (ok=False, error=None). Transient errors (ok=False, error!=None) must keep
+    the manifest-default capability so 502/503/429/timeout never strip features."""
+
+    def _run_sync_with_probe(self, probe_result: dict) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home = tmp_path / "home"
+            home.mkdir()
+            providers_dir = bridge.state_paths(home)["providers"]
+            providers_dir.mkdir(parents=True, exist_ok=True)
+            provider = {
+                "schema_version": bridge.SCHEMA_VERSION,
+                "id": "fixture",
+                "display_name": "Fixture Provider",
+                "cli": {"commands": ["fixture"], "auth_hints": []},
+                "cliproxy": {"provider": "fixture", "auth_file_prefixes": ["fixture"]},
+                "models": [
+                    {
+                        "key": "fixture-model",
+                        "candidates": ["fixture-model"],
+                        "codebuddy": {
+                            "supportsToolCall": True,
+                            "supportsImages": True,
+                            "supportsReasoning": True,
+                        },
+                    }
+                ],
+            }
+            (providers_dir / "fixture.json").write_text(json.dumps(provider), encoding="utf-8")
+            models_file = tmp_path / "models.json"
+            models_file.write_text(json.dumps([{"id": "fixture-model", "owned_by": "fixture"}]), encoding="utf-8")
+            codebuddy_file = tmp_path / "codebuddy_models.json"
+            codebuddy_file.write_text("[]", encoding="utf-8")
+
+            args = argparse.Namespace(
+                home=str(home),
+                codebuddy=str(codebuddy_file),
+                models_file=str(models_file),
+                apply=True,
+                skip_probes=False,
+                strict=False,
+                force=False,
+                providers="fixture",
+                proxy_url="http://127.0.0.1:8317",
+            )
+            old_key = os.environ.get("CODEBUDDY_BRIDGE_API_KEY")
+            os.environ["CODEBUDDY_BRIDGE_API_KEY"] = "test-key-" + "x" * 30
+            try:
+                with mock.patch.object(bridge, "probe_model", return_value=probe_result):
+                    rc = bridge.cmd_sync(args)
+            finally:
+                if old_key is None:
+                    os.environ.pop("CODEBUDDY_BRIDGE_API_KEY", None)
+                else:
+                    os.environ["CODEBUDDY_BRIDGE_API_KEY"] = old_key
+            self.assertEqual(rc, 0)
+            written = json.loads(codebuddy_file.read_text(encoding="utf-8"))
+            return next(m for m in written if m["id"] == "fixture-model")
+
+    def test_transient_error_does_not_downgrade(self):
+        # text/stream ok; tools/images/reasoning all failed with transport errors.
+        probe = {
+            "text": {"ok": True, "error": None},
+            "stream": {"ok": True, "error": None},
+            "tools": {"ok": False, "error": "http_error: HTTP 502 from local proxy"},
+            "images": {"ok": False, "error": "http_error: HTTP 503 from local proxy"},
+            "reasoning": {"ok": False, "error": "timeout: read timeout"},
+        }
+        entry = self._run_sync_with_probe(probe)
+        self.assertTrue(entry["supportsToolCall"], "transient tools error must not downgrade")
+        self.assertTrue(entry["supportsImages"], "transient images error must not downgrade")
+        self.assertTrue(entry["supportsReasoning"], "transient reasoning error must not downgrade")
+
+    def test_clean_unsupported_downgrades(self):
+        # text/stream ok; tools/reasoning got a clean success but capability unsupported (error None).
+        probe = {
+            "text": {"ok": True, "error": None},
+            "stream": {"ok": True, "error": None},
+            "tools": {"ok": False, "error": None},
+            "images": {"ok": True, "error": None},
+            "reasoning": {"ok": False, "error": None},
+        }
+        entry = self._run_sync_with_probe(probe)
+        self.assertFalse(entry["supportsToolCall"], "clean unsupported must downgrade")
+        self.assertTrue(entry["supportsImages"], "supported must stay true")
+        self.assertFalse(entry["supportsReasoning"], "clean unsupported must downgrade")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
