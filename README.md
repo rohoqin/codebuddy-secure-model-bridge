@@ -64,30 +64,6 @@ python3 <skill-dir>/scripts/bridge.py validate-provider -p providers/codex.json
 - 内置模型与手动自定义条目采用增量合并，永不直接覆盖
 - 不修改系统代理、不拦截 CodeBuddy 对外流量
 
-## 发布
-
-### GitHub
-
-本仓库即可直接推送：
-
-```bash
-cd codebuddy-secure-model-bridge
-git init
-git add .
-git commit -m "feat: CodeBuddy 多模型安全接入 skill"
-git remote add origin https://github.com/<your-username>/codebuddy-secure-model-bridge.git
-git branch -M main
-git push -u origin main
-```
-
-发布前请把 `_meta.json` / `_skillhub_meta.json` 中的 `ownerId` 占位符替换为你自己的 SkillHub owner ID。
-
-### SkillHub（技能市场）
-
-1. 在 CodeBuddy 中打开技能目录，选择「发布到技能市场 / Publish to SkillHub」
-2. 按提示登录并填写 `slug`、`name`、`version`、`summary`（已预填在 `_skillhub_meta.json`）
-3. 平台会写入真实的 `ownerId` 与发布时间戳
-
 ## 许可
 
 [MIT](./LICENSE.md) — 基于 Zhijian AI 的 WorkBuddy 原版改编，版权信息见 LICENSE。
