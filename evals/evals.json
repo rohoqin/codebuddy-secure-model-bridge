@@ -1,13 +1,12 @@
 {
   "skill": "codebuddy-secure-model-bridge",
   "adapted_from": "https://github.com/zjp1997720/zhijian-skills/tree/main/skills/workbuddy-cli-model-bridge",
-  "language": "bilingual",
+  "language": "english",
   "cases": [
     {
       "id": "audit-before-write",
       "title": "Audit before any write",
-      "prompt_en": "Connect my GPT subscription to CodeBuddy.",
-      "prompt_zh": "帮我把 GPT 订阅接入 CodeBuddy。",
+      "prompt": "Connect my GPT subscription to CodeBuddy.",
       "expectations": [
         "Runs `bridge.py audit` before modifying models.json",
         "Does not write CodeBuddy models.json during audit",
@@ -18,8 +17,7 @@
     {
       "id": "preserve-manual-models",
       "title": "Preserve manual custom models",
-      "prompt_en": "Sync my Gemini models into CodeBuddy, I already added a manual custom model 'my-private-gpt'.",
-      "prompt_zh": "把我的 Gemini 模型同步进 CodeBuddy，我自己已经加了一个手动自定义模型 'my-private-gpt'。",
+      "prompt": "Sync my Gemini models into CodeBuddy, I already added a manual custom model 'my-private-gpt'.",
       "expectations": [
         "Registers Gemini models that appear in the proxy /v1/models catalog",
         "Refuses to overwrite the manual 'my-private-gpt' entry and reports a conflict",
@@ -29,8 +27,7 @@
     {
       "id": "onboard-new-cli-provider",
       "title": "Onboard a new CLI provider",
-      "prompt_en": "Add a new provider 'mycli' so I can use its models in CodeBuddy.",
-      "prompt_zh": "加一个新的 provider 'mycli'，让我能在 CodeBuddy 里用它家的模型。",
+      "prompt": "Add a new provider 'mycli' so I can use its models in CodeBuddy.",
       "expectations": [
         "Creates a local override manifest under ~/.config/codebuddy-gpt-gemini-bridge/providers.d/<id>.json",
         "Validates it with `bridge.py validate-provider` before any sync",
@@ -40,8 +37,7 @@
     {
       "id": "repair-without-rotating-key",
       "title": "Repair without rotating the local key",
-      "prompt_en": "My GPT model returns 3002, fix it.",
-      "prompt_zh": "我的 GPT 模型报 3002，帮我修一下。",
+      "prompt": "My GPT model returns 3002, fix it.",
       "expectations": [
         "Distinguishes proxy / client-key / Provider-OAuth / routing / cache / system-proxy causes",
         "If a stale local proxy is suspected, asks to fully quit and reopen CodeBuddy before touching models.json",
