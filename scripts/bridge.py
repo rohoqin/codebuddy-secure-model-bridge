@@ -343,6 +343,19 @@ def checksum_for_asset(checksums: str, asset_name: str) -> str | None:
     return None
 
 
+def safe_extract_zip(bundle: zipfile.ZipFile, extract_root: Path) -> None:
+    """Extract *bundle* into *extract_root*, refusing any member that escapes the root.
+
+    Guards against zip-slip / path-traversal payloads regardless of platform.
+    """
+    extract_root_resolved = extract_root.resolve()
+    for member in bundle.infolist():
+        target = (extract_root / member.filename).resolve()
+        if os.path.commonpath((str(extract_root_resolved), str(target))) != str(extract_root_resolved):
+            raise BridgeError("unsafe_archive", "Archive member escapes the extraction root", details={"member": member.filename})
+        bundle.extract(member, extract_root)
+
+
 def install_windows_release(home: Path, plan: dict[str, str]) -> tuple[str, str]:
     """Install a checksum-verified official Windows release into the user profile."""
     if platform.system() != "Windows":
@@ -366,11 +379,7 @@ def install_windows_release(home: Path, plan: dict[str, str]) -> tuple[str, str]
         extract_root = temp_root / "extract"
         extract_root.mkdir()
         with zipfile.ZipFile(archive) as bundle:
-            for member in bundle.infolist():
-                target = (extract_root / member.filename).resolve()
-                if os.path.commonpath((str(extract_root.resolve()), str(target))) != str(extract_root.resolve()):
-                    raise BridgeError("unsafe_archive", "CLIProxyAPI archive contains a path outside its extraction root")
-            bundle.extractall(extract_root)
+            safe_extract_zip(bundle, extract_root)
         candidates = list(extract_root.rglob("cli-proxy-api.exe")) + list(extract_root.rglob("cliproxyapi.exe"))
         if not candidates:
             raise BridgeError("install_failed", "The verified archive did not contain the CLIProxyAPI executable")

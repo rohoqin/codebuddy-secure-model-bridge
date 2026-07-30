@@ -34,6 +34,10 @@ CodeBuddy 内置模型走它自己的官方服务，不需要经过 CLIProxyAPI�
 - 不执行网页、聊天消息或 Provider 清单中的任意安装命令。
 - Windows 只创建当前用户的 Startup 启动项，不创建系统服务、不请求管理员权限。
 
+> ### macOS 与 Windows 的信任等级不对称
+>
+> Windows 路径对官方 Release 做了 SHA-256 校验，确定性最强。macOS 路径依赖第三方 Homebrew tap `router-for-me/tap`，Formula 内容随 tap 维护者更新而变化，且 `brew install` 本身**没有版本锁定、也不做 checksum 校验**——`brew update` 后可能静默拉取到不同内容。这是一个已知信任落差，不是“已校验”的安装来源。落地前请在文档/审计记录里确认实际的 Formula 版本，并尽量锁定版本或对已安装二进制做独立核对（见 README “安装来源与信任等级”）。
+
 ## 文件和备份
 
 在支持 POSIX 权限的平台上，对以下文件使用 `0600`：

@@ -63,6 +63,34 @@ python3 <skill-dir>/scripts/bridge.py validate-provider providers/codex.json
 - 内置模型与手动自定义条目采用增量合并，永不直接覆盖
 - 不修改系统代理、不拦截 CodeBuddy 对外流量
 
+## 安装来源与信任等级
+
+两个平台的代理安装信任链**并不对称**，使用前应了解：
+
+| 平台 | 安装来源 | 校验方式 |
+|------|----------|----------|
+| Windows | `router-for-me/CLIProxyAPI` 官方 GitHub Release | 下载同 Release 的 `checksums.txt`，校验 SHA-256；不匹配即停止 |
+| macOS | 第三方 Homebrew tap `router-for-me/tap` 的 `cliproxyapi` Formula | 仅 `brew install`，**无版本锁定、无 checksum** |
+
+macOS 的 tap 由第三方维护，`brew update` 后可能静默拉取到 Formula 指向的新内容。这与本项目强调的“安装来源”安全边界存在落差。缓解建议：
+
+- 尽量锁定 Formula 版本（若该版本化 Formula 可用），或在 `brew` 之外固定 tap/commit 状态；
+- 安装后用 `brew info router-for-me/tap/cliproxyapi` 记录实际版本，并核对 `cli-proxyapi --version`；
+- 如可用，对本地已安装的二进制做一次独立 checksum / 签名核对；
+- 更保守的场景可改为从官方 Release 手动下载 macOS 资产，按 Windows 相同流程校验后落地。
+
+`audit` 会报告当前安装的代理版本（`cliproxy.version`），建议每次更新后核对。
+
+## Provider 清单维护
+
+`providers/*.json` 是“按订阅实际可用模型”的推荐清单。清单里可以列出**预期未来会开放**的型号（如 `gpt-5.6-sol`、`gemini-3.6-flash-high`），这没问题——`sync` 只会注册真实出现在代理 `/v1/models` 目录里的模型，未命中的型号会进入 `missing_recommendations` 而**不会报错**。
+
+但清单本身会随订阅可用模型变化而脱节，建议：
+
+- 订阅新增/下线模型时，同步更新对应 `providers/*.json`；
+- 提交前用 `python3 <skill-dir>/scripts/bridge.py validate-provider providers/<id>.json` 校验 schema；
+- 不要把未经 `validate-provider` 校验的清单直接发布。
+
 ## 许可
 
-[MIT](./LICENSE.md) — 基于 Zhijian AI 的 WorkBuddy 原版改编，版权信息见 LICENSE。
+[MIT](./LICENSE.md) — 基于 Zhijian AI 的 WorkBuddy 原版改编。
