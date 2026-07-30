@@ -1,6 +1,6 @@
 {
-  "slug": "codebuddy-gpt-gemini-bridge",
-  "name": "CodeBuddy GPT & Gemini 安全接入",
+  "slug": "codebuddy-secure-model-bridge",
+  "name": "CodeBuddy 多模型安全接入",
   "version": "1.0.0",
   "summary": "将订阅版 OpenAI Codex/GPT 与 Google Antigravity/Gemini 通过本机回环代理安全接入 CodeBuddy；只注册探测通过的模型，并保护内置模型与手动自定义条目。"
 }

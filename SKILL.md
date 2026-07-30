@@ -1,9 +1,9 @@
 ---
-name: codebuddy-gpt-gemini-bridge
+name: codebuddy-secure-model-bridge
 description: Safely install, audit, repair, and manage a loopback-only CLIProxyAPI bridge that connects subscription-backed OpenAI Codex/GPT and Google Antigravity/Gemini models to CodeBuddy. Use when a CodeBuddy user asks to 接入 GPT、接入 Gemini、使用 ChatGPT/Gemini 订阅模型、安装本地模型桥接、修复自定义 GPT/Gemini、恢复被代理影响的 CodeBuddy 内置模型，或把可用 GPT/Gemini 模型同步到 CodeBuddy。Supports macOS and Windows and preserves CodeBuddy built-in models and manual custom entries.
 ---
 
-# CodeBuddy GPT & Gemini Bridge
+# CodeBuddy 多模型安全接入
 
 将用户自己拥有的 Codex/ChatGPT 与 Antigravity/Gemini 订阅，通过本机回环地址上的 CLIProxyAPI 接入 CodeBuddy。只注册真实存在且通过探测的模型，不把模型名称或宣传页当作能力证明。
 

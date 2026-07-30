@@ -1,8 +1,8 @@
-# CodeBuddy GPT & Gemini 安全接入
+# CodeBuddy 多模型安全接入
 
 把你自己拥有的 **OpenAI Codex / ChatGPT** 与 **Google Antigravity / Gemini** 订阅，通过一台只监听本机回环地址（`127.0.0.1:8317`）的 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 代理，安全接入 **CodeBuddy CN**。
 
-> 本技能是 [WorkBuddy GPT & Gemini 安全接入](https://github.com/router-for-me) 的 CodeBuddy 适配版。主要差异：
+> 本技能是 [WorkBuddy 多模型安全接入](https://github.com/router-for-me) 的 CodeBuddy 适配版。主要差异：
 > - 模型写入路径由 `~/.workbuddy/models.json` 改为 **`~/.codebuddy/models.json`**
 > - 自定义模型 `vendor` 字段使用 CodeBuddy 实际的 **`"user"`**（而非 `"Custom"`）
 > - 写入字段精简为 CodeBuddy 真实 schema：`id / name / vendor / url / apiKey / supportsToolCall / supportsImages / supportsReasoning`
@@ -31,7 +31,7 @@
 
 ```bash
 mkdir -p ~/.codebuddy/skills
-cp -R codebuddy-gpt-gemini-bridge ~/.codebuddy/skills/
+cp -R codebuddy-secure-model-bridge ~/.codebuddy/skills/
 ```
 
 重启 CodeBuddy 后，技能即出现在可用技能列表中。
@@ -71,11 +71,11 @@ python3 <skill-dir>/scripts/bridge.py validate-provider -p providers/codex.json
 本仓库即可直接推送：
 
 ```bash
-cd codebuddy-gpt-gemini-bridge
+cd codebuddy-secure-model-bridge
 git init
 git add .
-git commit -m "feat: CodeBuddy GPT & Gemini 安全接入 skill"
-git remote add origin https://github.com/<your-username>/codebuddy-gpt-gemini-bridge.git
+git commit -m "feat: CodeBuddy 多模型安全接入 skill"
+git remote add origin https://github.com/<your-username>/codebuddy-secure-model-bridge.git
 git branch -M main
 git push -u origin main
 ```
