@@ -1563,13 +1563,15 @@ def cmd_sync(args: argparse.Namespace) -> int:
             # subscription, so a failed text/stream probe (rate-limit/quota 429, 5xx, timeout)
             # is transient and must NOT block registration. We keep the model and fall back to
             # the manifest-default capabilities instead. Capabilities are only downgraded when
-            # the probe actually succeeded and reported the capability as unsupported.
+            # the probe actually succeeded (error is None) and reported the capability as
+            # unsupported. A non-None error means the request itself failed (HTTP 4xx/5xx,
+            # timeout, upstream error body) and is treated as transient — keep the manifest default.
             if result["text"]["ok"] or result["stream"]["ok"]:
-                if "tools" in result and not result["tools"]["ok"]:
+                if "tools" in result and not result["tools"]["ok"] and result["tools"]["error"] is None:
                     settings["supportsToolCall"] = False
-                if "images" in result and not result["images"]["ok"]:
+                if "images" in result and not result["images"]["ok"] and result["images"]["error"] is None:
                     settings["supportsImages"] = False
-                if "reasoning" in result and not result["reasoning"]["ok"]:
+                if "reasoning" in result and not result["reasoning"]["ok"] and result["reasoning"]["error"] is None:
                     settings["supportsReasoning"] = False
             elif args.strict:
                 skipped.append({"model": model_id, "reason": "text_or_stream_probe_failed"})
