@@ -22,6 +22,30 @@
   ],
   "models": [
     {
+      "key": "gpt-5.3-codex-spark",
+      "candidates": ["gpt-5.3-codex-spark"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true,
+        "useCustomProtocol": true,
+        "reasoning": {
+          "defaultEffort": "high",
+          "supportedEfforts": ["low", "medium", "high"],
+          "canDisableThinking": true
+        }
+      },
+      "limits_by_model": {
+        "gpt-5.3-codex-spark": {
+          "maxInputTokens": 1050000,
+          "maxOutputTokens": 128000,
+          "sources": {
+            "context_window": "https://help.openai.com/en/articles/9624314"
+          }
+        }
+      }
+    },
+    {
       "key": "gpt-5.6-sol",
       "candidates": ["gpt-5.6-sol"],
       "codebuddy": {
