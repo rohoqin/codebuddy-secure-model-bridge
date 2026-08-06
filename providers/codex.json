@@ -26,7 +26,7 @@
       "candidates": ["gpt-5.3-codex-spark"],
       "codebuddy": {
         "supportsToolCall": true,
-        "supportsImages": true,
+        "supportsImages": false,
         "supportsReasoning": true,
         "useCustomProtocol": true,
         "reasoning": {
