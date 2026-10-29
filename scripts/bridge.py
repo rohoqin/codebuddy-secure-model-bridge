@@ -203,6 +203,68 @@ def loopback_port_open(host: str, port: int, *, timeout: float = 0.5) -> bool:
         return False
 
 
+# Ports local proxy clients (Clash / Clash Verge / V2Ray / Surge ...) commonly bind.
+COMMON_LOCAL_PROXY_PORTS = (1080, 1087, 7890, 7891, 7897, 8080, 8888, 6152, 10808, 20171)
+
+
+def parse_proxy_url(value: str | None) -> tuple[str, int] | None:
+    """Extract (host, port) from a CLIProxyAPI ``proxy-url`` value.
+
+    Accepts ``http://``, ``https://``, ``socks5://`` and ``socks5h://`` with optional
+    ``user:pass@`` userinfo. Returns ``None`` for ``direct``/``none`` or anything
+    unparseable, so callers treat it as "no upstream proxy configured".
+    """
+    if not value:
+        return None
+    candidate = value.strip()
+    if candidate.lower() in {"direct", "none"}:
+        return None
+    if "://" not in candidate:
+        candidate = "http://" + candidate
+    try:
+        parsed = urllib.parse.urlsplit(candidate)
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return None
+    if not host:
+        return None
+    if port is None:
+        port = 1080 if parsed.scheme.startswith("socks") else 8080
+    return host, int(port)
+
+
+def redact_proxy_url(value: str) -> str:
+    """Drop userinfo credentials before the value reaches audit output."""
+    if "://" not in value:
+        return value
+    scheme, rest = value.split("://", 1)
+    if "@" in rest:
+        rest = rest.rsplit("@", 1)[1]
+    return f"{scheme}://{rest}"
+
+
+def probe_local_proxy_url(value: str | None, *, timeout: float = 0.5) -> bool | None:
+    """TCP-check the configured upstream proxy when it is a loopback address.
+
+    Returns ``True`` when reachable, ``False`` when the port is closed, and ``None``
+    when nothing can be verified cheaply (no proxy configured, or a remote host that
+    we deliberately do not dial from a read-only audit).
+    """
+    parsed = parse_proxy_url(value)
+    if parsed is None:
+        return None
+    host, port = parsed
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        return None
+    return loopback_port_open(host, port, timeout=timeout)
+
+
+def detect_open_local_proxy_ports(*, timeout: float = 0.2) -> list[int]:
+    """Ports from COMMON_LOCAL_PROXY_PORTS that are currently listening on loopback."""
+    return [port for port in COMMON_LOCAL_PROXY_PORTS if loopback_port_open("127.0.0.1", port, timeout=timeout)]
+
+
 PROXY_PROCESS_SIGNATURES = (
     "proxy",
     "charles",
@@ -826,6 +888,7 @@ def config_facts(path: Path | None, home: Path) -> dict[str, Any]:
         port = int(port_raw)
     except ValueError:
         port = 8317
+    upstream_proxy = top_level_scalar(text, "proxy-url")
     return {
         "path": str(path),
         "exists": True,
@@ -834,6 +897,8 @@ def config_facts(path: Path | None, home: Path) -> dict[str, Any]:
         "loopback_only": host_is_loopback(host),
         "auth_dir": str(home_path(auth_dir_raw, home)),
         "api_key_count": len(yaml_list_values(text, "api-keys")),
+        "upstream_proxy": redact_proxy_url(upstream_proxy) if upstream_proxy else None,
+        "upstream_proxy_reachable": probe_local_proxy_url(upstream_proxy),
         "mode": reported_mode(path),
     }
 
@@ -1306,6 +1371,31 @@ def cmd_audit(args: argparse.Namespace) -> int:
         findings.append({"code": "bridge_secret_missing", "severity": "action", "message": "Bootstrap must create a dedicated proxy client key."})
     if proxy_error:
         findings.append({"code": "proxy_request_failed", "severity": "action", "message": "The authenticated local proxy request failed."})
+    if facts.get("exists") and facts.get("upstream_proxy") and facts.get("upstream_proxy_reachable") is False:
+        # CLIProxyAPI dials this proxy for every upstream call. When it is closed, the local
+        # model list still answers (so audit used to look healthy) but every real inference
+        # fails with "connect: connection refused". Surface it here with a concrete fix.
+        listening = detect_open_local_proxy_ports()
+        hint = ""
+        if listening:
+            ports = ", ".join(str(port) for port in listening)
+            hint = (
+                f" Detected a listening local proxy on port(s) {ports}; point CLIProxyAPI's "
+                f"`proxy-url` at one of them (e.g. http://127.0.0.1:{listening[0]})."
+            )
+        else:
+            hint = " Start your local proxy client (Clash/V2Ray/Surge) or set `proxy-url: \"direct\"`."
+        findings.append(
+            {
+                "code": "cliproxy_upstream_proxy_unreachable",
+                "severity": "error",
+                "message": (
+                    f"CLIProxyAPI is configured with proxy-url {facts['upstream_proxy']}, but that "
+                    f"address is not accepting connections, so every model request fails."
+                    + hint
+                ),
+            }
+        )
     if codebuddy_network.get("stale"):
         findings.append(
             {

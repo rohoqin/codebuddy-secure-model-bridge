@@ -49,6 +49,32 @@ Check in order:
 
 Avoid editing a second, non-effective config. Homebrew, a manual LaunchAgent, and a Windows portable install often use different paths.
 
+## `cliproxy_upstream_proxy_unreachable` (models fail with `connection refused`)
+
+`/v1/models` can answer while every real inference fails. That combination almost always means
+CLIProxyAPI's own upstream `proxy-url` is dead: the local model list does not need the upstream
+proxy, but each chat/completion request does.
+
+`audit` reports this as `cliproxy_upstream_proxy_unreachable` together with:
+
+- `cliproxy.config.upstream_proxy` — the configured value, with userinfo redacted
+- `cliproxy.config.upstream_proxy_reachable` — `true` / `false` / `null` (null = not checked, e.g. a remote host or `direct`)
+
+Fix by pointing `proxy-url` at the port your proxy client is actually listening on, then restart
+the service. Audit also lists any ports it found open from the common set
+(`1080, 1087, 7890, 7891, 7897, 8080, 8888, 6152, 10808, 20171`), so the message usually names the right port.
+
+```bash
+grep -n '^proxy-url' /opt/homebrew/etc/cliproxyapi.conf   # what CLIProxyAPI dials
+for p in 1087 7890 7897; do nc -z -G 1 127.0.0.1 $p && echo "$p open"; done
+brew services restart cliproxyapi
+```
+
+Note that a proxy client can be running while binding nothing: a GUI process plus a privileged
+core does not guarantee a listening mixed-port, and `lsof` run as a normal user cannot see sockets
+owned by the root-owned core. Test the port directly instead of trusting the process list. In TUN
+mode there may be no proxy port at all, in which case `proxy-url: "direct"` is the correct setting.
+
 ## Provider Model Missing
 
 Only re-run `authorize <provider>` when the Provider has no auth file or an authenticated request fails. A CLI login outside CLIProxyAPI does not mean the proxy is authorized.

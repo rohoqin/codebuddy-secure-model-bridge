@@ -12,6 +12,7 @@ import argparse
 import io
 import json
 import os
+import socket
 import sys
 import tempfile
 import unittest
@@ -557,6 +558,66 @@ class SyncOfflineE2ETest(unittest.TestCase):
             # limits_by_model must win over the codebuddy maxInputTokens fallback.
             self.assertEqual(entry["maxInputTokens"], 200000)
             self.assertEqual(entry["maxOutputTokens"], 8000)
+
+
+class UpstreamProxyTest(unittest.TestCase):
+    """audit must notice when CLIProxyAPI's upstream proxy-url is dead.
+
+    The local /v1/models list still answers without the upstream proxy, so a
+    closed proxy-url previously looked healthy while every inference failed
+    with 'connection refused'.
+    """
+
+    def test_parse_http_and_socks(self):
+        self.assertEqual(bridge.parse_proxy_url("http://127.0.0.1:1087"), ("127.0.0.1", 1087))
+        self.assertEqual(bridge.parse_proxy_url("socks5://user:pass@127.0.0.1:1080"), ("127.0.0.1", 1080))
+        self.assertEqual(bridge.parse_proxy_url("http://127.0.0.1"), ("127.0.0.1", 8080))
+        self.assertEqual(bridge.parse_proxy_url("socks5://127.0.0.1"), ("127.0.0.1", 1080))
+
+    def test_parse_direct_and_none(self):
+        for value in ("direct", "none", "DIRECT", "", None):
+            self.assertIsNone(bridge.parse_proxy_url(value), value)
+
+    def test_redacts_userinfo(self):
+        self.assertEqual(
+            bridge.redact_proxy_url("socks5://user:secret@127.0.0.1:1080"),
+            "socks5://127.0.0.1:1080",
+        )
+        self.assertEqual(bridge.redact_proxy_url("http://127.0.0.1:7897"), "http://127.0.0.1:7897")
+
+    def test_closed_port_is_false(self):
+        self.assertFalse(bridge.probe_local_proxy_url("http://127.0.0.1:1"))
+
+    def test_remote_host_is_not_dialed(self):
+        self.assertIsNone(bridge.probe_local_proxy_url("http://example.com:8080"))
+
+    def test_direct_is_unknown(self):
+        self.assertIsNone(bridge.probe_local_proxy_url("direct"))
+
+    def test_open_port_is_true(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+            server.bind(("127.0.0.1", 0))
+            server.listen(1)
+            port = server.getsockname()[1]
+            self.assertTrue(bridge.probe_local_proxy_url(f"http://127.0.0.1:{port}"))
+
+    def test_config_facts_reports_upstream_proxy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            path.write_text(
+                'host: "127.0.0.1"\nport: 8317\nproxy-url: "http://127.0.0.1:1"\n', encoding="utf-8"
+            )
+            facts = bridge.config_facts(path, Path(tmp))
+        self.assertEqual(facts["upstream_proxy"], "http://127.0.0.1:1")
+        self.assertIs(facts["upstream_proxy_reachable"], False)
+
+    def test_config_facts_no_proxy_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            path.write_text('host: "127.0.0.1"\nport: 8317\n', encoding="utf-8")
+            facts = bridge.config_facts(path, Path(tmp))
+        self.assertIsNone(facts["upstream_proxy"])
+        self.assertIsNone(facts["upstream_proxy_reachable"])
 
 
 class PruneStaleTest(unittest.TestCase):
