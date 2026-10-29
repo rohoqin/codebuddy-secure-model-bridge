@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 The codebuddy-secure-model-bridge Authors
+Copyright (c) 2026 Roho Qin
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
