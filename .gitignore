@@ -217,3 +217,18 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .DS_Store
+
+# --- CodeBuddy bridge local state and credentials (never publish) ---
+# Local model registry / backups written by `bridge.py sync`
+models.json
+models.json.backup-*
+*.models.json
+*.models.json.backup-*
+# Bridge secret + managed state (~/.config/codebuddy-gpt-gemini-bridge/)
+secret.json
+state.json
+# Machine-local provider overrides (contain account/org specific data)
+providers.d/
+# Ad-hoc config backups created while editing the proxy config
+*.bak-*
+*.conf.bak*

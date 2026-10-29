@@ -103,14 +103,24 @@ Sync must:
 
 - Read the account's actually available models from the live `/v1/models`
 - Probe text, SSE streaming, tools, image input, and reasoning control separately
-- Skip models whose text or streaming probe fails
-- Downgrade a failed optional capability to `false`
+- Keep a model that appears in the catalog even when its text/stream probe fails; a transport
+  failure (429/5xx/timeout) is transient, so fall back to the manifest's declared capabilities
+  instead of dropping the model (`--strict` restores the old drop-on-failure behavior)
+- Downgrade a capability to `false` **only** when the probe returned a clean success
+  (`error` is `None`) but the capability was not exhibited; a probe that errored proves nothing
 - Merge into CodeBuddy atomically, preserving manual models and unrelated entries
 - Refuse to overwrite a non-Skill-managed entry with the same ID
+- Preserve (not silently delete) a managed entry whose model left the catalog by default;
+  `--prune-stale` opts into removing those managed ids so the picker stops listing models
+  that can only fail. Manual and third-party entries are never eligible
 - Migrate the legacy `codebuddy-cli-model-bridge` local key and managed manifest without re-authorizing or creating conflicts
 - Not interpret an image-understanding probe as image-generation capability
 
 Do not use `--skip-probes` in a real install. That flag is only for offline testing.
+
+Before syncing, trust `audit` over inference health: `/v1/models` answers from the local proxy and
+stays green even when CLIProxyAPI's upstream `proxy-url` is dead, in which case every real request
+fails with `connection refused`. Treat `cliproxy_upstream_proxy_unreachable` as blocking.
 
 ### 5. Verify CodeBuddy Has No Regression
 

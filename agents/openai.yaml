@@ -1,4 +1,4 @@
 interface:
-  display_name: "CodeBuddy GPT & Gemini Bridge"
-  short_description: "Securely connect subscription GPT and Gemini models while protecting built-in models"
-  default_prompt: "Use $codebuddy-gpt-gemini-bridge to securely connect my GPT and Gemini subscription models to CodeBuddy, and verify that built-in models are unaffected."
+  display_name: "CodeBuddy Multi-Model Secure Bridge"
+  short_description: "Securely connect subscription GPT, Gemini, and Grok models while protecting built-in models"
+  default_prompt: "Use $codebuddy-secure-model-bridge to securely connect my GPT, Gemini, and Grok subscription models to CodeBuddy, and verify that built-in models are unaffected."

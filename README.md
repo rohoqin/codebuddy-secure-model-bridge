@@ -54,10 +54,15 @@ python3 <skill-dir>/scripts/bridge.py sync        # sync catalog models into mod
 # never drop a model (fall back to manifest-default capabilities).
 python3 <skill-dir>/scripts/bridge.py sync --skip-probes   # skip probes entirely, register all catalog models (recommended when quota is exhausted)
 python3 <skill-dir>/scripts/bridge.py sync --strict        # restore original strict behavior: drop a model if its probe fails
+python3 <skill-dir>/scripts/bridge.py sync --prune-stale   # also remove bridge-managed entries whose model left the catalog
 python3 <skill-dir>/scripts/bridge.py validate-provider providers/codex.json
 ```
 
 > If `codebuddy_stale_system_proxy` appears, a leftover proxy was detected on 8080/8081. Fully quit and reopen CodeBuddy before retrying — do **not** change the system proxy or built-in models to work around it.
+
+> If `cliproxy_upstream_proxy_unreachable` appears, the local `/v1/models` list may still answer while **every** real request fails: CLIProxyAPI's own `proxy-url` points at a dead port. Audit reports the configured value (userinfo redacted), whether it accepts connections, and which common local-proxy port is actually open.
+
+`sync --prune-stale` is opt-in. By default a bridge-managed entry whose model disappears upstream is **preserved** (nothing is deleted silently); with this flag those managed ids are removed from `models.json` and the bridge state so the picker stops offering models that can only fail. Manual and third-party entries are never eligible — only ids this bridge previously managed.
 
 See `references/security-boundaries.md` and `references/troubleshooting.md` for the full security boundaries and troubleshooting guide.
 
@@ -88,7 +93,7 @@ The macOS tap is maintained by a third party and may silently pull different For
 
 ## Provider Manifest Maintenance
 
-`providers/*.json` is a recommended manifest of "models actually available in your subscription". It may list expected-future model names (e.g. `gpt-5.6-sol`, `gemini-3.6-flash-high`) — that is fine, because `sync` only registers models that genuinely appear in the proxy `/v1/models` catalog; unmatched models go into `missing_recommendations` and **never raise an error**.
+`providers/*.json` is a recommended manifest of "models actually available in your subscription". It may list expected-future model names (e.g. `gpt-6.1-sol`, `gemini-4-argon-high`) — that is fine, because `sync` only registers models that genuinely appear in the proxy `/v1/models` catalog; unmatched models go into `missing_recommendations` and **never raise an error**.
 
 But the manifest itself drifts as subscription-available models change; we recommend:
 
@@ -157,10 +162,15 @@ python3 <skill-dir>/scripts/bridge.py sync        # 把目录里存在的模型�
 # 429/5xx/超时这类瞬时失败不会丢模型（回退到 provider 默认能力）。
 python3 <skill-dir>/scripts/bridge.py sync --skip-probes   # 完全跳过探测，直接按清单注册全部目录模型（配额耗尽时推荐）
 python3 <skill-dir>/scripts/bridge.py sync --strict        # 恢复原始严格行为：探测不过就跳过该模型
+python3 <skill-dir>/scripts/bridge.py sync --prune-stale   # 同时清理上游已下架、由本技能托管的条目
 python3 <skill-dir>/scripts/bridge.py validate-provider providers/codex.json
 ```
 
 > 若出现 `codebuddy_stale_system_proxy`，说明检测到 8080/8081 上有遗留代理。请完全退出并重新打开 CodeBuddy 后再重试，**不要**去改系统代理或内置模型来绕过。
+
+> 若出现 `cliproxy_upstream_proxy_unreachable`：本地 `/v1/models` 可能仍然正常，但**每一次真实请求都会失败**——CLIProxyAPI 自身的 `proxy-url` 指向了一个没有监听的端口。审计会给出配置值（凭据已脱敏）、是否能连通，以及本机实际在监听哪个常见代理端口。
+
+`sync --prune-stale` 默认关闭。默认行为下，托管模型在上游下架后会被**保留**（不会静默删除）；加上该开关后，这些托管 id 会从 `models.json` 与桥接状态中移除，避免模型选择器继续列出必定失败的模型。手动添加与第三方条目永不被清理——只有本技能曾托管的 id 才会被考虑。
 
 更完整的安全边界与排错指南见 `references/security-boundaries.md` 与 `references/troubleshooting.md`。
 
@@ -191,7 +201,7 @@ macOS 的 tap 由第三方维护，`brew update` 后可能静默拉取到 Formul
 
 ## Provider 清单维护
 
-`providers/*.json` 是"按订阅实际可用模型"的推荐清单。清单里可以列出**预期未来会开放**的型号（如 `gpt-5.6-sol`、`gemini-3.6-flash-high`），这没问题——`sync` 只会注册真实出现在代理 `/v1/models` 目录里的模型，未命中的型号会进入 `missing_recommendations` 而**不会报错**。
+`providers/*.json` 是"按订阅实际可用模型"的推荐清单。清单里可以列出**预期未来会开放**的型号（如 `gpt-6.1-sol`、`gemini-4-argon-high`），这没问题——`sync` 只会注册真实出现在代理 `/v1/models` 目录里的模型，未命中的型号会进入 `missing_recommendations` 而**不会报错**。
 
 但清单本身会随订阅可用模型变化而脱节，建议：
 
