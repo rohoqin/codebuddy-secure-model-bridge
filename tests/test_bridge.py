@@ -559,6 +559,83 @@ class SyncOfflineE2ETest(unittest.TestCase):
             self.assertEqual(entry["maxOutputTokens"], 8000)
 
 
+class PruneStaleTest(unittest.TestCase):
+    """--prune-stale may only remove bridge-managed entries whose model vanished
+    from the upstream catalog. Manual / third-party entries must survive."""
+
+    def _run(self, prune: bool) -> tuple[list[dict], dict]:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home = tmp_path / "home"
+            home.mkdir()
+            providers_dir = bridge.state_paths(home)["providers"]
+            providers_dir.mkdir(parents=True, exist_ok=True)
+            provider = {
+                "schema_version": bridge.SCHEMA_VERSION,
+                "id": "fixture",
+                "display_name": "Fixture Provider",
+                "cli": {"commands": ["fixture"], "auth_hints": []},
+                "cliproxy": {"provider": "fixture", "auth_file_prefixes": ["fixture"]},
+                "models": [
+                    {"key": "live-model", "candidates": ["live-model"], "codebuddy": {"supportsToolCall": True}}
+                ],
+            }
+            (providers_dir / "fixture.json").write_text(json.dumps(provider), encoding="utf-8")
+            models_file = tmp_path / "models.json"
+            models_file.write_text(json.dumps([{"id": "live-model", "owned_by": "fixture"}]), encoding="utf-8")
+            codebuddy_file = tmp_path / "codebuddy_models.json"
+            # managed_before includes gone-model (bridge-managed, now absent upstream)
+            existing = [
+                {"id": "gone-model", "name": "Gone", "vendor": "user", "url": "http://127.0.0.1:8317/v1/chat/completions"},
+                {"id": "manual-model", "name": "Manual", "vendor": "user", "url": "https://api.example.com/v1"},
+            ]
+            codebuddy_file.write_text(json.dumps(existing), encoding="utf-8")
+            state_file = bridge.state_paths(home)["state"]
+            bridge.save_json(state_file, {
+                "schema_version": bridge.SCHEMA_VERSION,
+                "managed_model_ids": ["gone-model"],
+            })
+
+            args = argparse.Namespace(
+                home=str(home),
+                codebuddy=str(codebuddy_file),
+                models_file=str(models_file),
+                apply=True,
+                skip_probes=True,
+                strict=False,
+                force=False,
+                prune_stale=prune,
+                providers="fixture",
+                proxy_url="http://127.0.0.1:8317",
+            )
+            old_key = os.environ.get("CODEBUDDY_BRIDGE_API_KEY")
+            os.environ["CODEBUDDY_BRIDGE_API_KEY"] = "test-key-" + "x" * 30
+            try:
+                rc = bridge.cmd_sync(args)
+            finally:
+                if old_key is None:
+                    os.environ.pop("CODEBUDDY_BRIDGE_API_KEY", None)
+                else:
+                    os.environ["CODEBUDDY_BRIDGE_API_KEY"] = old_key
+            self.assertEqual(rc, 0)
+            written = json.loads(codebuddy_file.read_text(encoding="utf-8"))
+            return written, bridge.load_json(state_file)
+
+    def test_stale_preserved_by_default(self):
+        written, state = self._run(prune=False)
+        ids = {m["id"] for m in written}
+        self.assertIn("gone-model", ids, "without --prune-stale the stale managed entry stays")
+        self.assertIn("manual-model", ids)
+
+    def test_prune_stale_removes_managed_only(self):
+        written, state = self._run(prune=True)
+        ids = {m["id"] for m in written}
+        self.assertNotIn("gone-model", ids, "stale managed entry must be pruned")
+        self.assertIn("manual-model", ids, "manual entry must never be pruned")
+        self.assertIn("live-model", ids, "live model must be registered")
+        self.assertNotIn("gone-model", state.get("managed_model_ids", []), "state must drop pruned id")
+
+
 class ProbeDowngradeTest(unittest.TestCase):
     """Capabilities must only be downgraded on a clean-success-unsupported probe
     (ok=False, error=None). Transient errors (ok=False, error!=None) must keep

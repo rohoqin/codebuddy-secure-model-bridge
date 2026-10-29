@@ -22,6 +22,81 @@
   ],
   "models": [
     {
+      "key": "gpt-6.1-sol",
+      "candidates": ["gpt-6.1-sol"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true,
+        "useCustomProtocol": true,
+        "reasoning": {
+          "defaultEffort": "high",
+          "supportedEfforts": ["low", "medium", "high"],
+          "canDisableThinking": true
+        }
+      }
+    },
+    {
+      "key": "gpt-6.1-terra",
+      "candidates": ["gpt-6.1-terra"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true,
+        "useCustomProtocol": true,
+        "reasoning": {
+          "defaultEffort": "high",
+          "supportedEfforts": ["low", "medium", "high"],
+          "canDisableThinking": true
+        }
+      }
+    },
+    {
+      "key": "gpt-6-sol",
+      "candidates": ["gpt-6-sol"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true,
+        "useCustomProtocol": true,
+        "reasoning": {
+          "defaultEffort": "high",
+          "supportedEfforts": ["low", "medium", "high"],
+          "canDisableThinking": true
+        }
+      }
+    },
+    {
+      "key": "gpt-6-luna",
+      "candidates": ["gpt-6-luna"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true,
+        "useCustomProtocol": true,
+        "reasoning": {
+          "defaultEffort": "high",
+          "supportedEfforts": ["low", "medium", "high"],
+          "canDisableThinking": true
+        }
+      }
+    },
+    {
+      "key": "gpt-6-astra",
+      "candidates": ["gpt-6-astra"],
+      "codebuddy": {
+        "supportsToolCall": true,
+        "supportsImages": true,
+        "supportsReasoning": true,
+        "useCustomProtocol": true,
+        "reasoning": {
+          "defaultEffort": "high",
+          "supportedEfforts": ["low", "medium", "high"],
+          "canDisableThinking": true
+        }
+      }
+    },
+    {
       "key": "gpt-5.3-codex-spark",
       "candidates": ["gpt-5.3-codex-spark"],
       "codebuddy": {

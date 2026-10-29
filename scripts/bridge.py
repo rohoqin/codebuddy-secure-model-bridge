@@ -1626,9 +1626,20 @@ def cmd_sync(args: argparse.Namespace) -> int:
     state_file = state_paths(home)["state"]
     managed_before, state_sources = managed_state(home)
     merged, changes, managed_after = merge_codebuddy_models(existing, incoming, managed_before)
+    pruned: list[str] = []
+    if getattr(args, "prune_stale", False) and changes["stale_preserved"]:
+        # Opt-in cleanup: drop bridge-managed entries that no longer exist upstream so the
+        # picker does not offer models that are guaranteed to fail. Only ids previously
+        # managed by this bridge are eligible; manual/third-party entries are never touched.
+        stale_set = set(changes["stale_preserved"])
+        merged = [item for item in merged if item.get("id") not in stale_set]
+        pruned = sorted(stale_set)
+        managed_after = managed_after - stale_set
+        changes = {**changes, "stale_preserved": []}
+    changes = {**changes, "pruned": pruned}
     backup: Path | None = None
     permissions_hardened: list[str] = []
-    if args.apply and (changes["added"] or changes["updated"]):
+    if args.apply and (changes["added"] or changes["updated"] or pruned):
         backup = backup_file(codebuddy_path)
         if wrapped_document:
             output_document = dict(existing_document)
@@ -1712,6 +1723,11 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--models-file", help="Offline /v1/models fixture for deterministic testing")
     sync.add_argument("--skip-probes", action="store_true", help="Register all catalog models without live probing")
     sync.add_argument("--strict", action="store_true", help="Drop models whose text/stream probe fails (original behaviour)")
+    sync.add_argument(
+        "--prune-stale",
+        action="store_true",
+        help="Remove bridge-managed entries whose model no longer exists upstream (manual entries are never touched)",
+    )
     sync.add_argument("--apply", action="store_true")
     sync.set_defaults(func=cmd_sync)
 
