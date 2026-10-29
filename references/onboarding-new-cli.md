@@ -1,6 +1,6 @@
 # Onboarding a New CLI Provider
 
-> **Adapted from** [`zjp1997720/zhijian-skills/skills/workbuddy-cli-model-bridge`](https://github.com/zjp1997720/zhijian-skills/tree/main/skills/workbuddy-cli-model-bridge) (`references/onboarding-new-cli.md`), with CodeBuddy-specific paths and the `codebuddy` capability key. Local machine overrides live in `~/.config/codebuddy-gpt-gemini-bridge/providers.d/` on this skill.
+> **Adapted from** [`zjp1997720/zhijian-skills/skills/workbuddy-cli-model-bridge`](https://github.com/zjp1997720/zhijian-skills/tree/main/skills/workbuddy-cli-model-bridge) (`references/onboarding-new-cli.md`), with CodeBuddy-specific paths and the `codebuddy` capability key. Local machine overrides live in `~/.config/codebuddy-secure-model-bridge/providers.d/` on this skill.
 
 Use a local machine manifest first, verify with `validate-provider`, then contribute the manifest back to the bundled `providers/` once it is proven.
 
@@ -9,11 +9,21 @@ Use a local machine manifest first, verify with `validate-provider`, then contri
 Create a file named `<id>.json` in the machine-local providers directory:
 
 ```bash
-mkdir -p ~/.config/codebuddy-gpt-gemini-bridge/providers.d
-"$EDITOR" ~/.config/codebuddy-gpt-gemini-bridge/providers.d/<id>.json
+mkdir -p ~/.config/codebuddy-secure-model-bridge/providers.d
+"$EDITOR" ~/.config/codebuddy-secure-model-bridge/providers.d/<id>.json
 ```
 
 The local manifest **overrides** the bundled manifest with the same `id`. Fields and the schema follow [`provider-schema.md`](provider-schema.md); the capability block uses the key `codebuddy`.
+
+`cliproxy` (and its `provider` field) is **required** — it is the CLIProxyAPI `owned_by` label that lets sync attribute a catalog model to this manifest, and `validate-provider` rejects a manifest without it.
+
+### Upgrading from an earlier layout
+
+Release 1.1.0 renamed the state directory from `~/.config/codebuddy-gpt-gemini-bridge/` to `~/.config/codebuddy-secure-model-bridge/`. Nothing breaks on upgrade:
+
+- reads (`audit`, `sync`, `validate-provider`) fall back through the old directory automatically
+- the next `bootstrap --apply` or `sync --apply` copies `secret.json`, `state.json`, and any `providers.d/*.json` into the new directory, leaves the old one untouched as a rollback copy, and reports the copied paths as `migrated_state_files`
+- an existing file in the new directory always wins, so a migration never clobbers fresher data
 
 Fill in:
 
@@ -26,7 +36,7 @@ Fill in:
 ## Step 2: Validate
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py validate-provider ~/.config/codebuddy-gpt-gemini-bridge/providers.d/<id>.json
+python3 <skill-dir>/scripts/bridge.py validate-provider ~/.config/codebuddy-secure-model-bridge/providers.d/<id>.json
 ```
 
 `validate-provider` rejects:

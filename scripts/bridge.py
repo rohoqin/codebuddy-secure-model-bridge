@@ -39,9 +39,15 @@ SKILL_DIR = Path(__file__).resolve().parents[1]
 BUNDLED_PROVIDER_DIR = SKILL_DIR / "providers"
 DEFAULT_CODEBUDDY_RELATIVE = Path(".codebuddy/models.json")
 DEFAULT_PROXY_URL = "http://127.0.0.1:8317"
-DEFAULT_STATE_RELATIVE = Path(".config/codebuddy-gpt-gemini-bridge")
+DEFAULT_STATE_RELATIVE = Path(".config/codebuddy-secure-model-bridge")
+# Superseded state locations, newest first. The bridge reads through all of them so an
+# upgrade never loses an existing secret / managed manifest, and copies them forward on
+# the next write path (bootstrap / sync --apply).
+PREVIOUS_STATE_RELATIVE = Path(".config/codebuddy-gpt-gemini-bridge")
 LEGACY_STATE_RELATIVE = Path(".config/codebuddy-cli-model-bridge")
-PORTABLE_ROOT_RELATIVE = Path(".local/share/codebuddy-gpt-gemini-bridge")
+PORTABLE_ROOT_RELATIVE = Path(".local/share/codebuddy-secure-model-bridge")
+# Windows portable installs created under the previous name must stay discoverable.
+PREVIOUS_PORTABLE_ROOT_RELATIVE = Path(".local/share/codebuddy-gpt-gemini-bridge")
 CLIPROXY_RELEASE_API = "https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest"
 
 # Only these hosts are considered explicitly loopback-only. Any other value
@@ -352,7 +358,7 @@ def latest_release_plan() -> dict[str, str]:
         raise BridgeError("unsupported_os", "Only macOS and Windows are supported")
     request = urllib.request.Request(
         CLIPROXY_RELEASE_API,
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "codebuddy-gpt-gemini-bridge"},
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "codebuddy-secure-model-bridge"},
     )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -381,7 +387,7 @@ def latest_release_plan() -> dict[str, str]:
 
 
 def download_file(url: str, destination: Path, *, max_bytes: int) -> None:
-    request = urllib.request.Request(url, headers={"User-Agent": "codebuddy-gpt-gemini-bridge"})
+    request = urllib.request.Request(url, headers={"User-Agent": "codebuddy-secure-model-bridge"})
     total = 0
     try:
         with urllib.request.urlopen(request, timeout=60) as response, destination.open("wb") as handle:
@@ -461,19 +467,48 @@ def install_windows_release(home: Path, plan: dict[str, str]) -> tuple[str, str]
     return str(destination), actual
 
 
-def windows_startup_path(home: Path) -> Path:
+STARTUP_MARKER = "Managed by codebuddy-secure-model-bridge"
+SUPERSEDED_STARTUP_MARKERS = ("Managed by codebuddy-gpt-gemini-bridge", "Managed by codebuddy-cli-model-bridge")
+
+
+def _startup_dir(home: Path) -> Path:
     appdata = os.environ.get("APPDATA")
     root = Path(appdata) if appdata else home / "AppData/Roaming"
-    return root / "Microsoft/Windows/Start Menu/Programs/Startup/codebuddy-gpt-gemini-bridge.cmd"
+    return root / "Microsoft/Windows/Start Menu/Programs/Startup"
+
+
+def windows_startup_path(home: Path) -> Path:
+    return _startup_dir(home) / "codebuddy-secure-model-bridge.cmd"
+
+
+def superseded_startup_paths(home: Path) -> list[Path]:
+    """Startup entries this skill created under an earlier name."""
+    directory = _startup_dir(home)
+    return [
+        directory / "codebuddy-gpt-gemini-bridge.cmd",
+        directory / "codebuddy-cli-model-bridge.cmd",
+    ]
+
+
+def _is_own_startup_entry(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    return STARTUP_MARKER in text or any(marker in text for marker in SUPERSEDED_STARTUP_MARKERS)
 
 
 def start_windows_proxy(binary: str, config: Path, home: Path) -> Path:
     startup = windows_startup_path(home)
     command = subprocess.list2cmdline([binary, "--config", str(config)])
-    content = f'@echo off\r\nrem Managed by codebuddy-gpt-gemini-bridge\r\nstart "" /min {command}\r\n'
-    if startup.is_file() and "Managed by codebuddy-gpt-gemini-bridge" not in startup.read_text(encoding="utf-8", errors="ignore"):
+    content = f'@echo off\r\nrem {STARTUP_MARKER}\r\nstart "" /min {command}\r\n'
+    if startup.is_file() and not _is_own_startup_entry(startup):
         raise BridgeError("startup_conflict", "A conflicting startup entry already exists", details={"path": str(startup)})
     atomic_write(startup, content)
+    # Remove entries created under a previous name; leaving them would launch the proxy twice
+    # at every logon. Only files this skill wrote are removed.
+    for stale in superseded_startup_paths(home):
+        if _is_own_startup_entry(stale):
+            stale.unlink(missing_ok=True)
     if not loopback_port_open("127.0.0.1", 8317):
         creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         subprocess.Popen(
@@ -571,8 +606,7 @@ def save_json(path: Path, value: Any, *, mode: int = 0o600) -> None:
     atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n", mode=mode)
 
 
-def state_paths(home: Path) -> dict[str, Path]:
-    root = home / DEFAULT_STATE_RELATIVE
+def _state_root_paths(root: Path) -> dict[str, Path]:
     return {
         "root": root,
         "state": root / "state.json",
@@ -581,25 +615,83 @@ def state_paths(home: Path) -> dict[str, Path]:
     }
 
 
+def state_paths(home: Path) -> dict[str, Path]:
+    return _state_root_paths(home / DEFAULT_STATE_RELATIVE)
+
+
+def superseded_state_paths(home: Path) -> list[dict[str, Path]]:
+    """State locations from earlier names of this skill, newest first."""
+    return [
+        _state_root_paths(home / PREVIOUS_STATE_RELATIVE),
+        _state_root_paths(home / LEGACY_STATE_RELATIVE),
+    ]
+
+
 def legacy_state_paths(home: Path) -> dict[str, Path]:
-    root = home / LEGACY_STATE_RELATIVE
-    return {
-        "root": root,
-        "state": root / "state.json",
-        "secret": root / "secret.json",
-    }
+    """Oldest compatible predecessor, kept for callers that need a single path."""
+    return superseded_state_paths(home)[-1]
+
+
+def all_state_paths(home: Path) -> list[dict[str, Path]]:
+    """Current state location first, then every superseded one."""
+    return [state_paths(home), *superseded_state_paths(home)]
+
+
+def migrate_superseded_state(home: Path) -> list[str]:
+    """Copy secret/state/provider overrides from superseded state dirs into the current one.
+
+    Only runs on write paths. An existing file in the current directory always wins, so a
+    migration can never clobber fresher local data, and the superseded dir is left in place
+    as a rollback copy.
+    """
+    target = state_paths(home)
+    migrated: list[str] = []
+    target["root"].mkdir(parents=True, exist_ok=True)
+    secure_file(target["root"], mode=0o700)
+    for source in superseded_state_paths(home):
+        for key in ("secret", "state"):
+            origin, destination = source[key], target[key]
+            if origin.is_file() and not destination.exists():
+                shutil.copy2(origin, destination)
+                secure_file(destination)
+                migrated.append(str(destination))
+        origin_dir, destination_dir = source["providers"], target["providers"]
+        if origin_dir.is_dir():
+            for item in sorted(origin_dir.glob("*.json")):
+                destination = destination_dir / item.name
+                if destination.exists():
+                    continue
+                destination_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, destination)
+                secure_file(destination)
+                migrated.append(str(destination))
+    return migrated
 
 
 def managed_state(home: Path) -> tuple[set[str], list[str]]:
-    """Union managed IDs across this Skill and its compatible predecessor."""
-    managed: set[str] = set()
-    sources: list[str] = []
-    for paths in (state_paths(home), legacy_state_paths(home)):
+    """Return the managed model ids.
+
+    The current state file is authoritative once it exists. Before the first migration it does
+    not, so earlier layouts are consulted and unioned for backward compatibility. Unioning
+    afterwards would be wrong: a superseded copy kept as a rollback artifact still lists ids
+    that were deliberately pruned, and they would resurface on every run.
+    """
+    def _read(paths: dict[str, Path]) -> tuple[set[str], bool]:
         payload = load_json(paths["state"], default={}) or {}
         ids = payload.get("managed_model_ids", []) if isinstance(payload, dict) else []
-        if isinstance(ids, list):
-            managed.update(item for item in ids if isinstance(item, str))
-        if paths["state"].is_file():
+        found = {item for item in ids if isinstance(item, str)} if isinstance(ids, list) else set()
+        return found, paths["state"].is_file()
+
+    current = state_paths(home)
+    managed, present = _read(current)
+    if present:
+        return managed, [str(current["state"])]
+
+    sources: list[str] = []
+    for paths in superseded_state_paths(home):
+        extra, exists = _read(paths)
+        managed |= extra
+        if exists:
             sources.append(str(paths["state"]))
     return managed, sources
 
@@ -609,7 +701,8 @@ def client_secret(home: Path, *, create: bool = False) -> str | None:
     if from_env:
         return from_env
     path = state_paths(home)["secret"]
-    for candidate in (path, legacy_state_paths(home)["secret"]):
+    for candidate_paths in all_state_paths(home):
+        candidate = candidate_paths["secret"]
         payload = load_json(candidate, default={}) or {}
         current = payload.get("proxy_api_key") if isinstance(payload, dict) else None
         if isinstance(current, str) and len(current) >= 24:
@@ -789,8 +882,12 @@ def validate_provider(provider: Any, *, source: str = "provider") -> list[str]:
 def load_providers(home: Path) -> dict[str, dict[str, Any]]:
     providers: dict[str, dict[str, Any]] = {}
     paths = sorted(BUNDLED_PROVIDER_DIR.glob("*.json"))
-    local_dir = state_paths(home)["providers"]
-    paths.extend(sorted(local_dir.glob("*.json")) if local_dir.is_dir() else [])
+    # Local overrides may still live in a superseded state dir before migration runs. The last
+    # file with a given id wins, so load oldest-first and let the current dir override both a
+    # superseded dir and the bundled manifest.
+    for state_dir in reversed(all_state_paths(home)):
+        local_dir = state_dir["providers"]
+        paths.extend(sorted(local_dir.glob("*.json")) if local_dir.is_dir() else [])
     for path in paths:
         payload = load_json(path)
         errors = validate_provider(payload, source=str(path))
@@ -807,6 +904,8 @@ def detect_proxy_binary(home: Path) -> str | None:
     candidates = [
         home / PORTABLE_ROOT_RELATIVE / "bin/cli-proxy-api.exe",
         home / PORTABLE_ROOT_RELATIVE / "bin/cli-proxy-api",
+        home / PREVIOUS_PORTABLE_ROOT_RELATIVE / "bin/cli-proxy-api.exe",
+        home / PREVIOUS_PORTABLE_ROOT_RELATIVE / "bin/cli-proxy-api",
         home / "Library/Application Support/CLIProxyAPI/cli-proxy-api",
         home / "cliproxyapi/cli-proxy-api",
         home / "cliproxyapi/cli-proxy-api.exe",
@@ -877,6 +976,7 @@ def detect_config(home: Path, explicit: str | None = None) -> Path | None:
         home / ".cli-proxy-api/config.yaml",
         home / "cliproxyapi/config.yaml",
         home / PORTABLE_ROOT_RELATIVE / "config.yaml",
+        home / PREVIOUS_PORTABLE_ROOT_RELATIVE / "config.yaml",
     ]
     if prefix:
         candidates.insert(0, prefix / "etc/cliproxyapi.conf")
@@ -1487,6 +1587,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     system = platform.system()
     if system not in {"Darwin", "Windows"}:
         raise BridgeError("unsupported_os", "This Skill supports macOS and Windows")
+    migrated_state = migrate_superseded_state(home) if args.apply else []
     config = detect_config(home, args.config)
     existing_text = bootstrap_config_preflight(config, allow_rebind_local=args.allow_rebind_local)
     binary = detect_proxy_binary(home)
@@ -1591,6 +1692,7 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
             "installed_sha256": installed_sha256,
             "proxy_url": DEFAULT_PROXY_URL,
             "client_key_available": bool(client_key),
+            "migrated_state_files": migrated_state,
             "secrets_redacted": True,
         }
     )
@@ -1635,6 +1737,7 @@ def cmd_authorize(args: argparse.Namespace) -> int:
 
 def cmd_sync(args: argparse.Namespace) -> int:
     home = Path(args.home).expanduser().resolve()
+    migrated_state = migrate_superseded_state(home) if args.apply else []
     providers_by_id = load_providers(home)
     requested = [item.strip() for item in args.providers.split(",") if item.strip()]
     unknown = sorted(set(requested) - set(providers_by_id))
@@ -1732,13 +1835,42 @@ def cmd_sync(args: argparse.Namespace) -> int:
         #      single-provider sync leaves every other provider out of `incoming`, so those
         #      models would otherwise look stale and be deleted while still being valid.
         synced_candidates: set[str] = set()
+        synced_patterns: list[str] = []
         for provider in providers:
             for recommendation in provider.get("models", []):
                 synced_candidates.update(recommendation.get("candidates") or [])
                 key = recommendation.get("key")
                 if isinstance(key, str) and key:
                     synced_candidates.add(key)
-        stale_set = set(changes["stale_preserved"]) & synced_candidates
+                synced_patterns.extend(recommendation.get("patterns") or [])
+        # A model claimed outright by a provider that is NOT part of this run stays untouched,
+        # even if a synced provider's regex would also match it.
+        foreign_candidates: set[str] = set()
+        for provider_id, provider in providers_by_id.items():
+            if provider_id in requested:
+                continue
+            for recommendation in provider.get("models", []):
+                foreign_candidates.update(recommendation.get("candidates") or [])
+                key = recommendation.get("key")
+                if isinstance(key, str) and key:
+                    foreign_candidates.add(key)
+
+        def _owned_by_synced(model_id: str) -> bool:
+            if model_id in synced_candidates:
+                return True
+            for pattern in synced_patterns:
+                try:
+                    if re.search(pattern, model_id):
+                        return True
+                except re.error:
+                    continue
+            return False
+
+        stale_set = {
+            model_id
+            for model_id in changes["stale_preserved"]
+            if model_id not in foreign_candidates and _owned_by_synced(model_id)
+        }
         if stale_set:
             merged = [item for item in merged if item.get("id") not in stale_set]
             pruned = sorted(stale_set)
@@ -1793,6 +1925,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
             "probes": probes,
             "backup": str(backup) if backup else None,
             "managed_state_sources": state_sources,
+            "migrated_state_files": migrated_state,
             "permissions_hardened": permissions_hardened,
             "secrets_redacted": True,
         }

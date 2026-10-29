@@ -105,10 +105,10 @@ Confirm `models.json` is an array, or an object containing a `models` array. Ope
 The startup item managed by this skill lives in the current user's:
 
 ```text
-%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\codebuddy-gpt-gemini-bridge.cmd
+%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\codebuddy-secure-model-bridge.cmd
 ```
 
-If a same-named file was not created by this skill, the script reports `startup_conflict` and stops. Do not overwrite an unknown startup item. To roll back, first end `cli-proxy-api.exe`, then remove this file tagged `Managed by codebuddy-gpt-gemini-bridge`; do not delete other Startup items.
+Earlier releases wrote `codebuddy-gpt-gemini-bridge.cmd` and `codebuddy-cli-model-bridge.cmd` instead. Those are removed automatically once a file carrying this skill's `Managed by …` marker is detected, so logon never launches the proxy twice. A same-named file **without** the marker is left alone and reported as `startup_conflict`; the script stops rather than overwriting an unknown startup item. To roll back, first end `cli-proxy-api.exe`, then delete the file tagged `Managed by codebuddy-secure-model-bridge`; do not delete other Startup items.
 
 ## Rollback
 

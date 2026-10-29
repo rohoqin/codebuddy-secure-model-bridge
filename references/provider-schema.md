@@ -12,7 +12,7 @@ A provider manifest declares "which models are actually available in this subscr
 | `id` | str | kebab-case, e.g. `codex`, `xai-grok`, `antigravity`. Used as the model `owned_by`. |
 | `display_name` | str | Human label. |
 | `cli` | object | `{ commands: string[], auth_hints: string[] }`. `auth_hints` are relative paths under the user home; no `..` and no absolute paths. |
-| `cliproxy` | object (optional) | `{ provider, login_flag?, auth_file_prefixes? }`. `login_flag` must be a single `--kebab-case` flag, passed as one subprocess argument, never via shell. |
+| `cliproxy` | object (**required**) | `{ provider, login_flag?, auth_file_prefixes? }`. `provider` is mandatory: it is the CLIProxyAPI `owned_by` label used to attribute catalog models, so `validate-provider` rejects a manifest without it. `login_flag` must be a single `--kebab-case` flag, passed as one subprocess argument, never via shell. |
 | `model_catalogs` | array (optional) | Declarative model catalogs. See below. |
 | `models` | array | Recommendations. See below. |
 

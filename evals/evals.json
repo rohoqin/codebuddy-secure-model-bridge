@@ -29,7 +29,7 @@
       "title": "Onboard a new CLI provider",
       "prompt": "Add a new provider 'mycli' so I can use its models in CodeBuddy.",
       "expectations": [
-        "Creates a local override manifest under ~/.config/codebuddy-gpt-gemini-bridge/providers.d/<id>.json",
+        "Creates a local override manifest under ~/.config/codebuddy-secure-model-bridge/providers.d/<id>.json",
         "Validates it with `bridge.py validate-provider` before any sync",
         "Does not reuse another CLI's OAuth tokens or write Provider credentials into CodeBuddy"
       ]

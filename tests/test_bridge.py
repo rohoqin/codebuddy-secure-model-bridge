@@ -707,6 +707,233 @@ class PruneStaleTest(unittest.TestCase):
         self.assertNotIn("gone-model", state.get("managed_model_ids", []), "state must drop pruned id")
 
 
+class StateMigrationTest(unittest.TestCase):
+    """Renaming the state dir must not strand an existing install."""
+
+    def _previous_root(self, home: Path) -> Path:
+        return home / bridge.PREVIOUS_STATE_RELATIVE
+
+    def test_reads_secret_from_superseded_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            previous = self._previous_root(home)
+            previous.mkdir(parents=True)
+            key = "k" * 64
+            bridge.save_json(previous / "secret.json", {"proxy_api_key": key})
+            self.assertEqual(bridge.client_secret(home), key)
+
+    def test_current_state_is_authoritative(self):
+        # Once the current state file exists, a superseded copy must not resurrect pruned ids.
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            previous = self._previous_root(home)
+            previous.mkdir(parents=True)
+            bridge.save_json(previous / "state.json", {"managed_model_ids": ["pruned-model", "kept"]})
+            current = bridge.state_paths(home)
+            current["root"].mkdir(parents=True)
+            bridge.save_json(current["state"], {"managed_model_ids": ["kept"]})
+
+            managed, sources = bridge.managed_state(home)
+
+            self.assertEqual(managed, {"kept"})
+            self.assertEqual(sources, [str(current["state"])])
+
+    def test_reads_managed_state_from_superseded_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            previous = self._previous_root(home)
+            previous.mkdir(parents=True)
+            bridge.save_json(previous / "state.json", {"managed_model_ids": ["old-model"]})
+            managed, sources = bridge.managed_state(home)
+            self.assertIn("old-model", managed)
+            self.assertTrue(any(str(previous) in source for source in sources))
+
+    def test_reads_provider_overrides_from_superseded_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            override_dir = self._previous_root(home) / "providers.d"
+            override_dir.mkdir(parents=True)
+            manifest = {
+                "schema_version": bridge.SCHEMA_VERSION,
+                "id": "localonly",
+                "display_name": "Local Only",
+                "cli": {"commands": ["localonly"], "auth_hints": []},
+                "cliproxy": {"provider": "localonly", "auth_file_prefixes": ["localonly-"]},
+                "models": [{"key": "m", "candidates": ["m"], "codebuddy": {}}],
+            }
+            (override_dir / "localonly.json").write_text(json.dumps(manifest), encoding="utf-8")
+            providers = bridge.load_providers(home)
+            self.assertIn("localonly", providers)
+
+    def test_migration_copies_forward_and_keeps_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            previous = self._previous_root(home)
+            override_dir = previous / "providers.d"
+            override_dir.mkdir(parents=True)
+            key = "m" * 64
+            bridge.save_json(previous / "secret.json", {"proxy_api_key": key})
+            bridge.save_json(previous / "state.json", {"managed_model_ids": ["a"]})
+            (override_dir / "x.json").write_text("{}", encoding="utf-8")
+
+            migrated = bridge.migrate_superseded_state(home)
+
+            current = bridge.state_paths(home)
+            self.assertTrue((current["secret"]).is_file())
+            self.assertTrue((current["state"]).is_file())
+            self.assertTrue((current["providers"] / "x.json").is_file())
+            self.assertEqual(len(migrated), 3)
+            self.assertEqual(bridge.client_secret(home), key)
+
+    def test_migration_never_overwrites_current(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            previous = self._previous_root(home)
+            previous.mkdir(parents=True)
+            current = bridge.state_paths(home)
+            current["root"].mkdir(parents=True)
+            bridge.save_json(previous / "secret.json", {"proxy_api_key": "p" * 64})
+            fresh = "c" * 64
+            bridge.save_json(current["secret"], {"proxy_api_key": fresh})
+
+            bridge.migrate_superseded_state(home)
+
+            self.assertEqual(bridge.client_secret(home), fresh)
+            # The superseded copy is retained as a rollback artifact.
+            self.assertTrue((previous / "secret.json").is_file())
+
+
+class StartupRenameTest(unittest.TestCase):
+    def test_new_name_and_legacy_cleanup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            prev = os.environ.get("APPDATA")
+            os.environ["APPDATA"] = str(home / "appdata")
+            try:
+                new_path = bridge.windows_startup_path(home)
+                self.assertEqual(new_path.name, "codebuddy-secure-model-bridge.cmd")
+                legacy = bridge.superseded_startup_paths(home)[0]
+                legacy.parent.mkdir(parents=True, exist_ok=True)
+                legacy.write_text("@echo off\r\nrem Managed by codebuddy-gpt-gemini-bridge\r\n", encoding="utf-8")
+
+                bridge.start_windows_proxy("C:/bin/cli-proxy-api.exe", home / "config.yaml", home)
+
+                self.assertTrue(new_path.is_file())
+                self.assertIn(bridge.STARTUP_MARKER, new_path.read_text(encoding="utf-8"))
+                self.assertFalse(legacy.exists(), "legacy startup entry must be removed to avoid double launch")
+            finally:
+                if prev is None:
+                    os.environ.pop("APPDATA", None)
+                else:
+                    os.environ["APPDATA"] = prev
+
+    def test_conflicting_foreign_entry_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            prev = os.environ.get("APPDATA")
+            os.environ["APPDATA"] = str(home / "appdata")
+            try:
+                new_path = bridge.windows_startup_path(home)
+                new_path.parent.mkdir(parents=True, exist_ok=True)
+                new_path.write_text("@echo off\r\nsomething-else.exe\r\n", encoding="utf-8")
+                with self.assertRaises(bridge.BridgeError):
+                    bridge.start_windows_proxy("C:/bin/cli-proxy-api.exe", home / "config.yaml", home)
+                self.assertIn("something-else.exe", new_path.read_text(encoding="utf-8"))
+            finally:
+                if prev is None:
+                    os.environ.pop("APPDATA", None)
+                else:
+                    os.environ["APPDATA"] = prev
+
+
+class PrunePatternScopeTest(unittest.TestCase):
+    """A stale id matched by a synced provider's `patterns` regex is prunable,
+    unless another provider declares that exact id."""
+
+    def _run(self, providers: str) -> set[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home = tmp_path / "home"
+            home.mkdir()
+            providers_dir = bridge.state_paths(home)["providers"]
+            providers_dir.mkdir(parents=True, exist_ok=True)
+            alpha = {
+                "schema_version": bridge.SCHEMA_VERSION,
+                "id": "alpha",
+                "display_name": "Alpha",
+                "cli": {"commands": ["alpha"], "auth_hints": []},
+                "cliproxy": {"provider": "alpha", "auth_file_prefixes": ["alpha-"]},
+                "models": [
+                    {"key": "alpha-live", "candidates": ["alpha-live"], "codebuddy": {}},
+                    # pattern-only ownership: no candidate entry names the retired model
+                    {"key": "alpha-family", "candidates": ["alpha-family"], "patterns": ["^alpha-retired-"], "codebuddy": {}},
+                ],
+            }
+            beta = {
+                "schema_version": bridge.SCHEMA_VERSION,
+                "id": "beta",
+                "display_name": "Beta",
+                "cli": {"commands": ["beta"], "auth_hints": []},
+                "cliproxy": {"provider": "beta", "auth_file_prefixes": ["beta-"]},
+                "models": [
+                    {"key": "beta-live", "candidates": ["beta-live"], "codebuddy": {}},
+                    {"key": "shared-retired", "candidates": ["shared-retired"], "codebuddy": {}},
+                ],
+            }
+            for payload in (alpha, beta):
+                (providers_dir / f"{payload['id']}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            models_file = tmp_path / "list.json"
+            models_file.write_text(
+                json.dumps([{"id": "alpha-live", "owned_by": "alpha"}, {"id": "beta-live", "owned_by": "beta"}]),
+                encoding="utf-8",
+            )
+            codebuddy_file = tmp_path / "models_out.json"
+            codebuddy_file.write_text(
+                json.dumps([
+                    {"id": "alpha-retired-1", "name": "r1", "vendor": "user", "url": "http://127.0.0.1:8317/v1"},
+                    {"id": "shared-retired", "name": "r2", "vendor": "user", "url": "http://127.0.0.1:8317/v1"},
+                ]),
+                encoding="utf-8",
+            )
+            bridge.save_json(bridge.state_paths(home)["state"], {
+                "schema_version": bridge.SCHEMA_VERSION,
+                "managed_model_ids": ["alpha-retired-1", "shared-retired"],
+            })
+
+            args = argparse.Namespace(
+                home=str(home),
+                codebuddy=str(codebuddy_file),
+                models_file=str(models_file),
+                apply=True,
+                skip_probes=True,
+                strict=False,
+                force=False,
+                prune_stale=True,
+                providers=providers,
+                proxy_url="http://127.0.0.1:8317",
+            )
+            old_key = os.environ.get("CODEBUDDY_BRIDGE_API_KEY")
+            os.environ["CODEBUDDY_BRIDGE_API_KEY"] = "test-key-" + "x" * 30
+            try:
+                rc = bridge.cmd_sync(args)
+            finally:
+                if old_key is None:
+                    os.environ.pop("CODEBUDDY_BRIDGE_API_KEY", None)
+                else:
+                    os.environ["CODEBUDDY_BRIDGE_API_KEY"] = old_key
+            self.assertEqual(rc, 0)
+            return {m["id"] for m in json.loads(codebuddy_file.read_text(encoding="utf-8"))}
+
+    def test_pattern_matched_model_is_pruned(self):
+        ids = self._run("alpha")
+        self.assertNotIn("alpha-retired-1", ids, "pattern-matched stale id belongs to alpha and must be pruned")
+
+    def test_id_owned_by_unsynced_provider_is_kept(self):
+        ids = self._run("alpha")
+        self.assertIn("shared-retired", ids, "an id declared by beta must survive an alpha-only sync")
+
+
 class PruneScopeTest(unittest.TestCase):
     """--prune-stale must only consider models owned by the providers being synced.
 
