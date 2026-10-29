@@ -703,6 +703,13 @@ def validate_provider(provider: Any, *, source: str = "provider") -> list[str]:
                 errors.append(f"{prefix}.key is duplicated")
             else:
                 seen.add(key)
+            allowed_model_keys = {"key", "candidates", "patterns", "codebuddy", "optional", "limits_by_model"}
+            unknown_model_keys = set(model) - allowed_model_keys
+            if unknown_model_keys:
+                # Rejecting typos here matters: a misspelled `limits_by_model` or `optional`
+                # would otherwise be ignored silently, dropping token limits or registering a
+                # Fast variant as a required model.
+                errors.append(f"{prefix} has unknown keys: {sorted(unknown_model_keys)}")
             candidates = model.get("candidates")
             patterns = model.get("patterns", [])
             if (
@@ -1718,14 +1725,28 @@ def cmd_sync(args: argparse.Namespace) -> int:
     merged, changes, managed_after = merge_codebuddy_models(existing, incoming, managed_before)
     pruned: list[str] = []
     if getattr(args, "prune_stale", False) and changes["stale_preserved"]:
-        # Opt-in cleanup: drop bridge-managed entries that no longer exist upstream so the
-        # picker does not offer models that are guaranteed to fail. Only ids previously
-        # managed by this bridge are eligible; manual/third-party entries are never touched.
-        stale_set = set(changes["stale_preserved"])
-        merged = [item for item in merged if item.get("id") not in stale_set]
-        pruned = sorted(stale_set)
-        managed_after = managed_after - stale_set
-        changes = {**changes, "stale_preserved": []}
+        # Opt-in cleanup: drop bridge-managed entries whose model no longer exists upstream so
+        # the picker stops offering models that can only fail. Two guard rails:
+        #   1. only ids this bridge previously managed are eligible (manual entries are safe);
+        #   2. only ids declared by a provider participating in THIS run are eligible. A
+        #      single-provider sync leaves every other provider out of `incoming`, so those
+        #      models would otherwise look stale and be deleted while still being valid.
+        synced_candidates: set[str] = set()
+        for provider in providers:
+            for recommendation in provider.get("models", []):
+                synced_candidates.update(recommendation.get("candidates") or [])
+                key = recommendation.get("key")
+                if isinstance(key, str) and key:
+                    synced_candidates.add(key)
+        stale_set = set(changes["stale_preserved"]) & synced_candidates
+        if stale_set:
+            merged = [item for item in merged if item.get("id") not in stale_set]
+            pruned = sorted(stale_set)
+            managed_after = managed_after - stale_set
+            changes = {
+                **changes,
+                "stale_preserved": sorted(set(changes["stale_preserved"]) - stale_set),
+            }
     changes = {**changes, "pruned": pruned}
     backup: Path | None = None
     permissions_hardened: list[str] = []

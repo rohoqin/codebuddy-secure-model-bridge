@@ -280,6 +280,13 @@ class ValidateProviderTest(unittest.TestCase):
         payload["model_catalogs"] = [{"path": "../cat.json", "format": "json"}]
         self.assertTrue(bridge.validate_provider(payload))
 
+    def test_model_unknown_key_rejected(self):
+        # A typo like `limitsByModel` must fail loudly instead of silently dropping limits.
+        payload = self._valid()
+        payload["models"][0]["limitsByModel"] = {"example-1": {"maxInputTokens": 1000}}
+        errors = bridge.validate_provider(payload)
+        self.assertTrue(any("unknown keys" in e for e in errors), errors)
+
     def test_limits_by_model_bad_url(self):
         payload = self._valid()
         payload["models"][0]["limits_by_model"] = {
@@ -638,7 +645,10 @@ class PruneStaleTest(unittest.TestCase):
                 "cli": {"commands": ["fixture"], "auth_hints": []},
                 "cliproxy": {"provider": "fixture", "auth_file_prefixes": ["fixture"]},
                 "models": [
-                    {"key": "live-model", "candidates": ["live-model"], "codebuddy": {"supportsToolCall": True}}
+                    # gone-model is declared here (that is how it became managed) but no
+                    # longer exists in the upstream catalog, so it is stale and prunable.
+                    {"key": "live-model", "candidates": ["live-model"], "codebuddy": {"supportsToolCall": True}},
+                    {"key": "gone-model", "candidates": ["gone-model"], "codebuddy": {"supportsToolCall": True}},
                 ],
             }
             (providers_dir / "fixture.json").write_text(json.dumps(provider), encoding="utf-8")
@@ -695,6 +705,82 @@ class PruneStaleTest(unittest.TestCase):
         self.assertIn("manual-model", ids, "manual entry must never be pruned")
         self.assertIn("live-model", ids, "live model must be registered")
         self.assertNotIn("gone-model", state.get("managed_model_ids", []), "state must drop pruned id")
+
+
+class PruneScopeTest(unittest.TestCase):
+    """--prune-stale must only consider models owned by the providers being synced.
+
+    A single-provider sync leaves the other providers' models out of `incoming`,
+    so they look stale by subtraction. Pruning them would delete perfectly valid
+    entries that simply were not part of this run.
+    """
+
+    def test_prune_does_not_touch_other_providers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home = tmp_path / "home"
+            home.mkdir()
+            providers_dir = bridge.state_paths(home)["providers"]
+            providers_dir.mkdir(parents=True, exist_ok=True)
+            # Each manifest declares both its live model and its now-retired one, which is how
+            # a retired id becomes attributable to a specific provider.
+            for pid in ("alpha", "beta"):
+                manifest = {
+                    "schema_version": bridge.SCHEMA_VERSION,
+                    "id": pid,
+                    "display_name": pid.title(),
+                    "cli": {"commands": [pid], "auth_hints": []},
+                    "cliproxy": {"provider": pid, "auth_file_prefixes": [f"{pid}-"]},
+                    "models": [
+                        {"key": f"{pid}-live", "candidates": [f"{pid}-live"], "codebuddy": {"supportsToolCall": True}},
+                        {"key": f"{pid}-gone", "candidates": [f"{pid}-gone"], "codebuddy": {"supportsToolCall": True}},
+                    ],
+                }
+                (providers_dir / f"{pid}.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+            models_file = tmp_path / "models_list.json"
+            models_file.write_text(json.dumps([{"id": "alpha-live", "owned_by": "alpha"}]), encoding="utf-8")
+            codebuddy_file = tmp_path / "codebuddy_models.json"
+            codebuddy_file.write_text(
+                json.dumps([
+                    {"id": "alpha-gone", "name": "A gone", "vendor": "user", "url": "http://127.0.0.1:8317/v1/chat/completions"},
+                    {"id": "beta-gone", "name": "B gone", "vendor": "user", "url": "http://127.0.0.1:8317/v1/chat/completions"},
+                ]),
+                encoding="utf-8",
+            )
+            state_file = bridge.state_paths(home)["state"]
+            bridge.save_json(state_file, {
+                "schema_version": bridge.SCHEMA_VERSION,
+                "managed_model_ids": ["alpha-gone", "beta-gone"],
+            })
+
+            # Sync ONLY alpha, with prune enabled. beta-gone is valid, just not synced now.
+            args = argparse.Namespace(
+                home=str(home),
+                codebuddy=str(codebuddy_file),
+                models_file=str(models_file),
+                apply=True,
+                skip_probes=True,
+                strict=False,
+                force=False,
+                prune_stale=True,
+                providers="alpha",
+                proxy_url="http://127.0.0.1:8317",
+            )
+            old_key = os.environ.get("CODEBUDDY_BRIDGE_API_KEY")
+            os.environ["CODEBUDDY_BRIDGE_API_KEY"] = "test-key-" + "x" * 30
+            try:
+                rc = bridge.cmd_sync(args)
+            finally:
+                if old_key is None:
+                    os.environ.pop("CODEBUDDY_BRIDGE_API_KEY", None)
+                else:
+                    os.environ["CODEBUDDY_BRIDGE_API_KEY"] = old_key
+            self.assertEqual(rc, 0)
+            ids = {m["id"] for m in json.loads(codebuddy_file.read_text(encoding="utf-8"))}
+            self.assertIn("alpha-live", ids)
+            self.assertNotIn("alpha-gone", ids, "alpha-owned stale entry should be pruned")
+            self.assertIn("beta-gone", ids, "beta entry must survive an alpha-only sync")
 
 
 class ProbeDowngradeTest(unittest.TestCase):
