@@ -36,7 +36,7 @@ Fill in:
 ## Step 2: Validate
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py validate-provider ~/.config/codebuddy-secure-model-bridge/providers.d/<id>.json
+python3 {baseDir}/scripts/bridge.py validate-provider ~/.config/codebuddy-secure-model-bridge/providers.d/<id>.json
 ```
 
 `validate-provider` rejects:
@@ -52,8 +52,8 @@ python3 <skill-dir>/scripts/bridge.py validate-provider ~/.config/codebuddy-secu
 ## Step 3: Try a Local Sync
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py authorize <id>
-python3 <skill-dir>/scripts/bridge.py sync --providers <id> --skip-probes --apply
+python3 {baseDir}/scripts/bridge.py authorize <id>
+python3 {baseDir}/scripts/bridge.py sync --providers <id> --skip-probes --apply
 ```
 
 Use `--skip-probes` only for offline validation; real installs must probe.

@@ -1,6 +1,0 @@
-{
-  "slug": "codebuddy-secure-model-bridge",
-  "name": "CodeBuddy Multi-Model Secure Bridge",
-  "version": "1.1.0",
-  "summary": "Securely connect subscription-backed OpenAI Codex/GPT, Google Antigravity/Gemini, and xAI Grok models to CodeBuddy through a local loopback proxy; register only catalog-verified models, detect a dead upstream proxy before syncing, and protect built-in and manual custom entries."
-}

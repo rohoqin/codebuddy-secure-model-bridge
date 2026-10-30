@@ -27,7 +27,7 @@ Do not download CLIProxyAPI from a cloud drive, forum attachment, or unknown mir
 The existing config does not explicitly bind the loopback address. First confirm whether LAN or remote clients depend on it. If remote access is not intended, run:
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py bootstrap --apply --allow-rebind-local
+python3 {baseDir}/scripts/bridge.py bootstrap --apply --allow-rebind-local
 ```
 
 If remote access is intended, stop. This skill does not manage an outward-facing proxy.

@@ -12,6 +12,7 @@ import argparse
 import io
 import json
 import os
+import re
 import socket
 import sys
 import tempfile
@@ -24,6 +25,49 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import bridge  # noqa: E402
+
+
+class SkillFrontmatterTest(unittest.TestCase):
+    """Guards the fields SkillHub reads when publishing this skill."""
+
+    def _frontmatter(self) -> str:
+        text = (REPO_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("---\n"), "SKILL.md must open with YAML frontmatter")
+        return text.split("---\n", 2)[1]
+
+    def test_required_fields_present(self):
+        frontmatter = self._frontmatter()
+        for key in (
+            "name",
+            "description",
+            "description_zh",
+            "description_en",
+            "version",
+            "category",
+            "allowed-tools",
+            "metadata",
+        ):
+            self.assertRegex(
+                frontmatter, rf"(?m)^{re.escape(key)}:", f"SKILL.md frontmatter is missing `{key}`"
+            )
+
+    def test_no_tabs_in_frontmatter(self):
+        self.assertNotIn("\t", self._frontmatter(), "YAML forbids tabs for indentation")
+
+    def test_name_matches_slug(self):
+        name = re.search(r"(?m)^name:\s*(\S+)", self._frontmatter()).group(1)
+        self.assertEqual(name, REPO_ROOT.name, "frontmatter name must match the skill directory slug")
+
+    def test_version_matches_meta(self):
+        version = re.search(r"(?m)^version:\s*(\S+)", self._frontmatter()).group(1)
+        meta = json.loads((REPO_ROOT / "_meta.json").read_text(encoding="utf-8"))
+        self.assertEqual(version, meta["version"], "frontmatter version must match _meta.json")
+
+    def test_uses_basedir_placeholder(self):
+        # SkillHub substitutes {baseDir}; a hardcoded <skill-dir> would not resolve.
+        for name in ("SKILL.md", "README.md"):
+            text = (REPO_ROOT / name).read_text(encoding="utf-8")
+            self.assertNotIn("<skill-dir>", text, f"{name} still uses the unsupported <skill-dir> placeholder")
 
 
 class YamlHelpersTest(unittest.TestCase):

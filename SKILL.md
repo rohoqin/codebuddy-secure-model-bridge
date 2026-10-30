@@ -1,6 +1,26 @@
 ---
 name: codebuddy-secure-model-bridge
+display_name: CodeBuddy Multi-Model Secure Bridge
+display_name_en: CodeBuddy Multi-Model Secure Bridge
 description: macOS-first skill that safely installs, audits, repairs, and manages a loopback-only CLIProxyAPI bridge connecting subscription-backed OpenAI Codex/GPT, Google Antigravity/Gemini, and xAI Grok models to CodeBuddy (Windows Release + SHA-256 verification also supported). Use when a CodeBuddy user asks to connect GPT, connect Gemini, connect Grok, use ChatGPT/Gemini/Grok subscription models, install a local model bridge, repair custom GPT/Gemini/Grok, restore CodeBuddy built-in models affected by a proxy, or sync available models into CodeBuddy. Preserves CodeBuddy built-in models and manual custom entries.
+description_zh: "为 CodeBuddy 安全接入 GPT / Gemini / Grok 订阅模型：本地回环代理、按目录校验注册、内置与手动模型不被覆盖"
+description_en: "Connect subscription-backed GPT, Gemini and Grok models to CodeBuddy through a loopback-only proxy without disturbing built-in or manual models"
+version: 1.1.0
+category: Development
+allowed-tools: Read,Write,Edit,Bash
+metadata:
+  openclaw:
+    emoji: "🔐"
+    requires:
+      bins:
+        - python3
+    tags:
+      - codebuddy
+      - model-bridge
+      - cli-proxy
+      - openai
+      - gemini
+      - grok
 ---
 
 # CodeBuddy Multi-Model Secure Bridge
@@ -19,12 +39,12 @@ Connect a user's own Codex/ChatGPT and Antigravity/Gemini subscriptions to CodeB
 
 ## Locate the Skill Directory
 
-Locate the absolute path of the currently loaded skill directory and record it as `<skill-dir>`. Do not assume a fixed install location.
+Locate the absolute path of the currently loaded skill directory and record it as `{baseDir}`. Do not assume a fixed install location.
 
 Single entry point:
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py
+python3 {baseDir}/scripts/bridge.py
 ```
 
 On Windows, prefer CodeBuddy's bundled Python. If the command is `python`, keep the same arguments.
@@ -34,7 +54,7 @@ On Windows, prefer CodeBuddy's bundled Python. If the command is `python`, keep 
 ### 1. Audit First, Don't Write Config Yet
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py audit
+python3 {baseDir}/scripts/bridge.py audit
 ```
 
 Read the JSON result and confirm:
@@ -53,13 +73,13 @@ Establish a baseline where the current CodeBuddy built-in models respond normall
 Preview first:
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py bootstrap
+python3 {baseDir}/scripts/bridge.py bootstrap
 ```
 
 Only apply when the user explicitly asks to install, configure, or repair:
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py bootstrap --apply
+python3 {baseDir}/scripts/bridge.py bootstrap --apply
 ```
 
 On macOS, use Homebrew to install and launch CLIProxyAPI. If Homebrew is missing, only guide the user to install it from the official `brew.sh` source; do not run untrusted install commands.
@@ -81,8 +101,8 @@ If an existing config listens on `0.0.0.0`, `::`, or without an explicit loopbac
 Authorize only the providers the user requests:
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py authorize codex
-python3 <skill-dir>/scripts/bridge.py authorize antigravity
+python3 {baseDir}/scripts/bridge.py authorize codex
+python3 {baseDir}/scripts/bridge.py authorize antigravity
 ```
 
 Let CLIProxyAPI's native OAuth flow open the browser and have the user complete sign-in, then continue. Do not copy tokens from Codex, the Gemini CLI, or the browser; do not write Provider OAuth credentials into CodeBuddy.
@@ -94,7 +114,7 @@ An existing CLI login is only a discovery signal; CLIProxyAPI may still require 
 Connect GPT and Gemini together:
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py sync --providers codex,antigravity --apply
+python3 {baseDir}/scripts/bridge.py sync --providers codex,antigravity --apply
 ```
 
 When connecting only one, pass only the corresponding provider.
@@ -127,7 +147,7 @@ fails with `connection refused`. Treat `cliproxy_upstream_proxy_unreachable` as 
 Run again:
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py audit
+python3 {baseDir}/scripts/bridge.py audit
 ```
 
 Confirm:

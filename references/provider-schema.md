@@ -1,6 +1,6 @@
 # Provider Manifest Schema
 
-> **Adapted from** [`zjp1997720/zhijian-skills/skills/workbuddy-cli-model-bridge`](https://github.com/zjp1997720/zhijian-skills/tree/main/skills/workbuddy-cli-model-bridge) (`references/provider-schema.md`). This CodeBuddy version uses the capability block key **`codebuddy`** (upstream uses `workbuddy`), and `model_catalogs` here supports **JSON only** (TOML is intentionally unsupported to avoid a `tomllib` dependency on Python 3.10). Everything else follows the upstream contract. Run `python3 <skill-dir>/scripts/bridge.py validate-provider <file>` before committing any manifest.
+> **Adapted from** [`zjp1997720/zhijian-skills/skills/workbuddy-cli-model-bridge`](https://github.com/zjp1997720/zhijian-skills/tree/main/skills/workbuddy-cli-model-bridge) (`references/provider-schema.md`). This CodeBuddy version uses the capability block key **`codebuddy`** (upstream uses `workbuddy`), and `model_catalogs` here supports **JSON only** (TOML is intentionally unsupported to avoid a `tomllib` dependency on Python 3.10). Everything else follows the upstream contract. Run `python3 {baseDir}/scripts/bridge.py validate-provider <file>` before committing any manifest.
 
 A provider manifest declares "which models are actually available in this subscription" plus the CLI/CLIProxyAPI wiring and the CodeBuddy capability hints. Sync only registers models that genuinely appear in the proxy `/v1/models` catalog; unmatched entries go to `missing_recommendations` and never raise.
 

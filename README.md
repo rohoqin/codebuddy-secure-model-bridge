@@ -45,17 +45,17 @@ Restart CodeBuddy; the skill then appears in the available skills list.
 All commands go through the skill's `scripts/bridge.py`:
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py audit      # audit first, write nothing
-python3 <skill-dir>/scripts/bridge.py bootstrap   # preview the local bridge
-python3 <skill-dir>/scripts/bridge.py sync        # sync catalog models into models.json
+python3 {baseDir}/scripts/bridge.py audit      # audit first, write nothing
+python3 {baseDir}/scripts/bridge.py bootstrap   # preview the local bridge
+python3 {baseDir}/scripts/bridge.py sync        # sync catalog models into models.json
 
 # Quota/rate-limit tolerance: a model is registered as long as it appears in the proxy's
 # /v1/models catalog; live probing only refines capabilities. Transient failures (429/5xx/timeout)
 # never drop a model (fall back to manifest-default capabilities).
-python3 <skill-dir>/scripts/bridge.py sync --skip-probes   # skip probes entirely, register all catalog models (recommended when quota is exhausted)
-python3 <skill-dir>/scripts/bridge.py sync --strict        # restore original strict behavior: drop a model if its probe fails
-python3 <skill-dir>/scripts/bridge.py sync --prune-stale   # also remove bridge-managed entries whose model left the catalog
-python3 <skill-dir>/scripts/bridge.py validate-provider providers/codex.json
+python3 {baseDir}/scripts/bridge.py sync --skip-probes   # skip probes entirely, register all catalog models (recommended when quota is exhausted)
+python3 {baseDir}/scripts/bridge.py sync --strict        # restore original strict behavior: drop a model if its probe fails
+python3 {baseDir}/scripts/bridge.py sync --prune-stale   # also remove bridge-managed entries whose model left the catalog
+python3 {baseDir}/scripts/bridge.py validate-provider providers/codex.json
 ```
 
 > If `codebuddy_stale_system_proxy` appears, a leftover proxy was detected on 8080/8081. Fully quit and reopen CodeBuddy before retrying — do **not** change the system proxy or built-in models to work around it.
@@ -98,7 +98,7 @@ The macOS tap is maintained by a third party and may silently pull different For
 But the manifest itself drifts as subscription-available models change; we recommend:
 
 - Update the corresponding `providers/*.json` when your subscription adds/removes models
-- Run `python3 <skill-dir>/scripts/bridge.py validate-provider providers/<id>.json` before committing to check the schema
+- Run `python3 {baseDir}/scripts/bridge.py validate-provider providers/<id>.json` before committing to check the schema
 - Do not publish a manifest that has not passed `validate-provider`
 
 ## License
@@ -154,16 +154,16 @@ cp -R codebuddy-secure-model-bridge ~/.codebuddy/skills/
 所有命令统一入口为技能内的 `scripts/bridge.py`：
 
 ```bash
-python3 <skill-dir>/scripts/bridge.py audit      # 先审计，不写配置
-python3 <skill-dir>/scripts/bridge.py bootstrap   # 预览本地桥接
-python3 <skill-dir>/scripts/bridge.py sync        # 把目录里存在的模型同步进 models.json
+python3 {baseDir}/scripts/bridge.py audit      # 先审计，不写配置
+python3 {baseDir}/scripts/bridge.py bootstrap   # 预览本地桥接
+python3 {baseDir}/scripts/bridge.py sync        # 把目录里存在的模型同步进 models.json
 
 # 配额/限流容错：模型只要出现在代理 /v1/models 目录里就注册，实时探测只用来细化能力；
 # 429/5xx/超时这类瞬时失败不会丢模型（回退到 provider 默认能力）。
-python3 <skill-dir>/scripts/bridge.py sync --skip-probes   # 完全跳过探测，直接按清单注册全部目录模型（配额耗尽时推荐）
-python3 <skill-dir>/scripts/bridge.py sync --strict        # 恢复原始严格行为：探测不过就跳过该模型
-python3 <skill-dir>/scripts/bridge.py sync --prune-stale   # 同时清理上游已下架、由本技能托管的条目
-python3 <skill-dir>/scripts/bridge.py validate-provider providers/codex.json
+python3 {baseDir}/scripts/bridge.py sync --skip-probes   # 完全跳过探测，直接按清单注册全部目录模型（配额耗尽时推荐）
+python3 {baseDir}/scripts/bridge.py sync --strict        # 恢复原始严格行为：探测不过就跳过该模型
+python3 {baseDir}/scripts/bridge.py sync --prune-stale   # 同时清理上游已下架、由本技能托管的条目
+python3 {baseDir}/scripts/bridge.py validate-provider providers/codex.json
 ```
 
 > 若出现 `codebuddy_stale_system_proxy`，说明检测到 8080/8081 上有遗留代理。请完全退出并重新打开 CodeBuddy 后再重试，**不要**去改系统代理或内置模型来绕过。
@@ -206,7 +206,7 @@ macOS 的 tap 由第三方维护，`brew update` 后可能静默拉取到 Formul
 但清单本身会随订阅可用模型变化而脱节，建议：
 
 - 订阅新增/下线模型时，同步更新对应 `providers/*.json`
-- 提交前用 `python3 <skill-dir>/scripts/bridge.py validate-provider providers/<id>.json` 校验 schema
+- 提交前用 `python3 {baseDir}/scripts/bridge.py validate-provider providers/<id>.json` 校验 schema
 - 不要把未经 `validate-provider` 校验的清单直接发布
 
 ## 许可
