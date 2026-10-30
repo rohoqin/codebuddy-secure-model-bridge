@@ -6,7 +6,7 @@ description: macOS-first skill that safely installs, audits, repairs, and manage
 description_zh: "为 CodeBuddy 安全接入 GPT / Gemini / Grok 订阅模型：本地回环代理、按目录校验注册、内置与手动模型不被覆盖"
 description_en: "Connect subscription-backed GPT, Gemini and Grok models to CodeBuddy through a loopback-only proxy without disturbing built-in or manual models"
 version: 1.1.0
-category: Development
+category: Development Tools
 allowed-tools: Read,Write,Edit,Bash
 metadata:
   openclaw:
