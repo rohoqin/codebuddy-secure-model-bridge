@@ -27,6 +27,48 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import bridge  # noqa: E402
 
 
+class DistPackagingTest(unittest.TestCase):
+    """SkillHub rejects `.gitignore` ("不允许的文件类型"), so the archive builder
+    must never ship it, nor any other non-runtime artifact."""
+
+    @classmethod
+    def setUpClass(cls):
+        # build_dist.py is repo-maintenance tooling and is deliberately excluded from
+        # the published archive, so these checks only run inside the repository.
+        try:
+            import build_dist  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("build_dist.py is not shipped in the release archive")
+
+    def test_archive_excludes_rejected_files(self):
+        import build_dist
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = build_dist.build(Path(tmp))
+            self.assertTrue(archive.is_file())
+            self.assertTrue(archive.name.startswith(build_dist.SKILL_SLUG + "-"))
+            with zipfile.ZipFile(archive) as bundle:
+                names = bundle.namelist()
+
+        self.assertTrue(any(name.endswith("SKILL.md") for name in names), "SKILL.md must be packaged")
+        self.assertTrue(any(name.endswith("scripts/bridge.py") for name in names))
+
+        rejected = (".gitignore", ".gitattributes", ".DS_Store", "__pycache__", "/.git/", "/.github/")
+        for needle in rejected:
+            self.assertFalse(
+                any(needle in name for name in names),
+                f"{needle} must not appear in the SkillHub archive",
+            )
+        self.assertFalse(any(name.endswith(".pyc") for name in names))
+
+    def test_archive_name_carries_frontmatter_version(self):
+        import build_dist
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = build_dist.build(Path(tmp))
+        self.assertEqual(archive.stem, f"{build_dist.SKILL_SLUG}-{build_dist.skill_version()}")
+
+
 class SkillFrontmatterTest(unittest.TestCase):
     """Guards the fields SkillHub reads when publishing this skill."""
 
