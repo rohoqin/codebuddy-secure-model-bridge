@@ -61,6 +61,25 @@ class DistPackagingTest(unittest.TestCase):
             )
         self.assertFalse(any(name.endswith(".pyc") for name in names))
 
+    def test_install_mirrors_payload_without_dotfiles(self):
+        # The IDE publishes from the installed directory, so an install that keeps
+        # .gitignore reproduces the "不允许的文件类型" upload failure.
+        import build_dist
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = build_dist.install(Path(tmp))
+            entries = sorted(item.relative_to(target).as_posix() for item in target.rglob("*") if item.is_file())
+
+        self.assertIn("SKILL.md", entries)
+        self.assertIn("scripts/bridge.py", entries)
+        for name in entries:
+            parts = name.split("/")
+            self.assertFalse(
+                any(part in build_dist.EXCLUDED_NAMES or part.startswith(".") for part in parts),
+                f"installed tree must not contain {name}",
+            )
+        self.assertNotIn("scripts/build_dist.py", entries, "repo tooling must not be installed")
+
     def test_archive_name_carries_frontmatter_version(self):
         import build_dist
 

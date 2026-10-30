@@ -8,14 +8,23 @@ are covered by a test.
 
 Usage:
     python3 scripts/build_dist.py [output-dir]
+    python3 scripts/build_dist.py --install [-p skills-parent-dir]
 
 Writes `<output-dir>/<slug>-<version>.zip`, defaulting the output dir to
 `<repo>/dist`.
+
+`--install` mirrors the same payload into
+`<skills-parent-dir>/<slug>` (default `~/.codebuddy/skills`). Publishing from
+the IDE reads the *installed* copy, so a plain `rsync` that only skips `.git`
+would leave `.gitignore` behind and the upload would fail again with
+`不允许的文件类型: .gitignore`. Installing through this function is the only
+supported way to keep the installed tree uploadable.
 """
 
 from __future__ import annotations
 
 import re
+import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -72,10 +81,28 @@ def build(output_dir: Path | None = None, root: Path = REPO_ROOT) -> Path:
     return archive
 
 
+def install(skills_parent: Path | None = None, root: Path = REPO_ROOT) -> Path:
+    """Mirror the packaged payload into the CodeBuddy skills directory."""
+    parent = Path(skills_parent) if skills_parent is not None else Path.home() / ".codebuddy" / "skills"
+    target = parent / root.name
+    if target.exists():
+        shutil.rmtree(target)
+    for path, relative in iter_payload(root):
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, destination)
+    return target
+
+
 def main(argv: list[str]) -> int:
-    output_dir = Path(argv[1]).expanduser() if len(argv) > 1 else None
-    archive = build(output_dir)
-    print(archive)
+    arguments = argv[1:]
+    if "--install" in arguments:
+        rest = [item for item in arguments if item != "--install"]
+        parent = Path(rest[1]).expanduser() if len(rest) > 1 and rest[0] == "-p" else None
+        print(install(parent))
+        return 0
+    output_dir = Path(arguments[0]).expanduser() if arguments else None
+    print(build(output_dir))
     return 0
 
 
